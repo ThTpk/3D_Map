@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bangkok 3D Map</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --panel-bg: rgba(255, 255, 255, 0.94);
+    --text: #1d2330;
+    --muted: #5d6677;
+    --border: #dde1e8;
+    --accent: #0b6bcb;
+    --chip-bg: #f1f4f8;
+    --chip-hover: #e3e9f2;
+    --shadow: 0 6px 24px rgba(15, 25, 45, 0.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --panel-bg: rgba(24, 28, 36, 0.94);
+      --text: #e8ebf1;
+      --muted: #9aa3b4;
+      --border: #343b49;
+      --accent: #5aa9ff;
+      --chip-bg: #2a303c;
+      --chip-hover: #363e4d;
+      --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0e1117; font-family: "Noto Sans Thai", system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; }
+
+  .panel {
+    position: absolute; top: 16px; left: 16px; z-index: 2;
+    width: 320px; max-width: calc(100vw - 32px);
+    background: var(--panel-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow); backdrop-filter: blur(8px);
+    padding: 14px 16px;
+  }
+  .panel h1 { font-size: 18px; margin: 0 0 2px; font-weight: 600; }
+  .panel .sub { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+  .panel h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .toggle-btn {
+    display: none; position: absolute; top: 12px; right: 12px;
+    border: none; background: none; color: var(--muted); font-size: 18px; cursor: pointer;
+  }
+
+  .search { display: flex; gap: 6px; position: relative; }
+  .search input {
+    flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text);
+  }
+  .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .results {
+    position: absolute; top: 40px; left: 0; right: 0; z-index: 3;
+    background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: var(--shadow); max-height: 240px; overflow-y: auto; display: none;
+  }
+  .results div { padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .results div:last-child { border-bottom: none; }
+  .results div:hover { background: var(--chip-hover); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--chip-bg); color: var(--text);
+    font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .chip:hover { background: var(--chip-hover); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; padding-left: 16px; }
+
+  .status {
+    position: absolute; bottom: 30px; left: 16px; z-index: 2;
+    background: var(--panel-bg); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 600px) {
+    .panel { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; padding: 12px; }
+    .toggle-btn { display: block; }
+    .panel.collapsed .body { display: none; }
+    .panel.collapsed .sub { margin-bottom: 0; }
+    .status { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel" id="panel">
+  <button class="toggle-btn" id="toggle" aria-label="ย่อ/ขยาย">▾</button>
+  <h1>กรุงเทพมหานคร 3D</h1>
+  <p class="sub">แผนที่สามมิติ · อาคารแสดงตามความสูงจริง</p>
+
+  <div class="body">
+    <div class="search">
+      <input id="q" type="search" placeholder="ค้นหาสถานที่ในกรุงเทพฯ…" autocomplete="off">
+      <div class="results" id="results"></div>
+    </div>
+
+    <h2>สถานที่สำคัญ</h2>
+    <div class="chips" id="places"></div>
+
+    <h2>รูปแบบแผนที่</h2>
+    <div class="chips" id="styles"></div>
+
+    <h2>มุมมอง</h2>
+    <div class="row">
+      <span>เอียง</span>
+      <input type="range" id="pitch" min="0" max="85" value="60">
+      <span id="pitchVal" style="width:28px;text-align:right">60°</span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="spin"> หมุนรอบอัตโนมัติ</label>
+      <label style="margin-left:auto"><input type="checkbox" id="b3d" checked> อาคาร 3D</label>
+    </div>
+
+    <h2>วิธีใช้</h2>
+    <ul class="hint">
+      <li>ลากเมาส์ซ้าย = เลื่อนแผนที่</li>
+      <li>ลากเมาส์ขวา / Ctrl+ลาก = หมุนและเอียง</li>
+      <li>ล้อเมาส์ = ซูม · มือถือ: ใช้ 2 นิ้วหมุน/เอียง</li>
+    </ul>
+  </div>
+</div>
+
+<div class="status" id="status"></div>
+
+<script>
+const OFM = 'https://tiles.openfreemap.org';
+
+const PLACES = [
+  { name: 'พระบรมมหาราชวัง', lng: 100.4913, lat: 13.7500, zoom: 16.5, bearing: -20 },
+  { name: 'วัดอรุณฯ',        lng: 100.4889, lat: 13.7437, zoom: 16.8, bearing: 60 },
+  { name: 'สยาม',            lng: 100.5340, lat: 13.7457, zoom: 16.2, bearing: -30 },
+  { name: 'สีลม / สาทร',      lng: 100.5280, lat: 13.7240, zoom: 15.8, bearing: 30 },
+  { name: 'มหานคร',          lng: 100.5283, lat: 13.7234, zoom: 17,   bearing: -45 },
+  { name: 'ไอคอนสยาม',        lng: 100.5104, lat: 13.7266, zoom: 16.3, bearing: 100 },
+  { name: 'อนุสาวรีย์ชัยฯ',    lng: 100.5386, lat: 13.7649, zoom: 16.5, bearing: 0 },
+  { name: 'จตุจักร',          lng: 100.5500, lat: 13.7999, zoom: 15.8, bearing: 20 },
+  { name: 'สุวรรณภูมิ',        lng: 100.7501, lat: 13.6900, zoom: 14,   bearing: -60 },
+];
+
+const STYLES = {
+  'สีสัน':     `${OFM}/styles/liberty`,
+  'เรียบ':     `${OFM}/styles/positron`,
+  'ดาวเทียม':  {
+    version: 8,
+    glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
+    sources: {
+      satellite: {
+        type: 'raster', tileSize: 256, maxzoom: 19,
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+      },
+      openmaptiles: { type: 'vector', url: `${OFM}/planet` },
+    },
+    layers: [
+      { id: 'satellite', type: 'raster', source: 'satellite' },
+      {
+        id: 'place-labels', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place',
+        layout: { 'text-field': ['coalesce', ['get', 'name:th'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': 13 },
+        paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,.75)', 'text-halo-width': 1.5 },
+      },
+    ],
+  },
+};
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: STYLES['สีสัน'],
+  center: [100.5235, 13.7350],
+  zoom: 14.6,
+  pitch: 60,
+  bearing: -20,
+  maxPitch: 85,
+  antialias: true,
+  hash: true,
+});
+
+// Keep the canvas sized to its container (e.g. when opened in a hidden tab/iframe)
+new ResizeObserver(() => map.resize()).observe(document.getElementById('map'));
+
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), 'bottom-right');
+map.addControl(new maplibregl.FullscreenControl(), 'bottom-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+// Prefer Thai names on label layers
+function useThaiLabels() {
+  for (const layer of map.getStyle().layers) {
+    if (layer.type !== 'symbol') continue;
+    const tf = map.getLayoutProperty(layer.id, 'text-field');
+    if (!tf || !JSON.stringify(tf).includes('name')) continue;
+    map.setLayoutProperty(layer.id, 'text-field',
+      ['coalesce', ['get', 'name:th'], ['get', 'name'], ['get', 'name:latin']]);
+  }
+}
+
+// Replace the style's own building layers with height-colored 3D extrusions
+function add3DBuildings() {
+  const style = map.getStyle();
+  const vectorSource = Object.keys(style.sources).find(k => style.sources[k].type === 'vector');
+  if (!vectorSource) return;
+  for (const layer of style.layers) {
+    if (layer['source-layer'] === 'building') map.removeLayer(layer.id);
+  }
+  const firstLabel = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+  const satellite = currentStyle === 'ดาวเทียม';
+  map.addLayer({
+    id: 'buildings-3d',
+    type: 'fill-extrusion',
+    source: vectorSource,
+    'source-layer': 'building',
+    minzoom: 13,
+    filter: ['!=', ['get', 'hide_3d'], true],
+    paint: {
+      'fill-extrusion-color': [
+        'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6],
+        0,   satellite ? '#d9d4c7' : '#e6dfd3',
+        30,  '#c9c3d9',
+        80,  '#8fb3e0',
+        150, '#4f86c6',
+        250, '#2d5c9e',
+      ],
+      'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['coalesce', ['get', 'render_height'], 6]],
+      'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+      'fill-extrusion-opacity': satellite ? 0.85 : 0.92,
+      'fill-extrusion-vertical-gradient': true,
+    },
+  }, firstLabel);
+  map.setLayoutProperty('buildings-3d', 'visibility', document.getElementById('b3d').checked ? 'visible' : 'none');
+}
+
+let currentStyle = 'สีสัน';
+// Re-apply Thai labels + 3D buildings after every style change
+let customizing = false;
+function applyCustomizations() {
+  if (customizing || !map.getStyle() || map.getLayer('buildings-3d')) return;
+  customizing = true;
+  try {
+    useThaiLabels();
+    add3DBuildings();
+    map.setSky?.({ 'sky-color': '#9cc7ef', 'horizon-color': '#e4eef8', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-color': '#e4eef8' });
+  } finally {
+    customizing = false;
+  }
+}
+map.on('styledata', applyCustomizations);
+
+// --- UI: landmarks
+const placesEl = document.getElementById('places');
+for (const p of PLACES) {
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = p.name;
+  b.onclick = () => {
+    stopSpin();
+    map.flyTo({ center: [p.lng, p.lat], zoom: p.zoom, bearing: p.bearing, pitch: 65, duration: 3500, essential: true });
+  };
+  placesEl.appendChild(b);
+}
+
+// --- UI: style switcher
+const stylesEl = document.getElementById('styles');
+for (const name of Object.keys(STYLES)) {
+  const b = document.createElement('button');
+  b.className = 'chip' + (name === currentStyle ? ' active' : '');
+  b.textContent = name;
+  b.onclick = () => {
+    if (name === currentStyle) return;
+    currentStyle = name;
+    stylesEl.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === b));
+    map.setStyle(STYLES[name]);
+    applyCustomizations(); // diffed style swaps apply synchronously without firing styledata
+  };
+  stylesEl.appendChild(b);
+}
+
+// --- UI: pitch slider (two-way)
+const pitchEl = document.getElementById('pitch');
+const pitchVal = document.getElementById('pitchVal');
+pitchEl.oninput = () => { map.setPitch(+pitchEl.value); };
+map.on('pitch', () => {
+  const p = Math.round(map.getPitch());
+  pitchEl.value = p;
+  pitchVal.textContent = p + '°';
+});
+
+// --- UI: 3D toggle
+document.getElementById('b3d').onchange = e => {
+  if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', e.target.checked ? 'visible' : 'none');
+};
+
+// --- UI: auto rotate
+const spinEl = document.getElementById('spin');
+let spinning = false;
+function spinStep() {
+  if (!spinning) return;
+  map.easeTo({ bearing: map.getBearing() + 20, duration: 4000, easing: t => t });
+}
+map.on('moveend', () => { if (spinning) spinStep(); });
+function stopSpin() { spinning = false; spinEl.checked = false; }
+spinEl.onchange = () => { spinning = spinEl.checked; if (spinning) spinStep(); else map.stop(); };
+['mousedown', 'touchstart', 'wheel'].forEach(ev => map.getCanvas().addEventListener(ev, stopSpin, { passive: true }));
+
+// --- UI: status bar
+const statusEl = document.getElementById('status');
+function updateStatus() {
+  const c = map.getCenter();
+  statusEl.textContent = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} · ซูม ${map.getZoom().toFixed(1)} · หมุน ${Math.round(map.getBearing())}°`;
+}
+map.on('move', updateStatus);
+updateStatus();
+
+// --- UI: search (OpenStreetMap Nominatim, limited to Bangkok area)
+const qEl = document.getElementById('q');
+const resultsEl = document.getElementById('results');
+let searchTimer, marker;
+qEl.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = qEl.value.trim();
+  if (q.length < 2) { resultsEl.style.display = 'none'; return; }
+  searchTimer = setTimeout(() => search(q), 500);
+});
+qEl.addEventListener('keydown', e => { if (e.key === 'Escape') resultsEl.style.display = 'none'; });
+document.addEventListener('click', e => { if (!e.target.closest('.search')) resultsEl.style.display = 'none'; });
+
+async function search(q) {
+  const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+    q, format: 'json', limit: 6, 'accept-language': 'th',
+    viewbox: '100.32,13.96,100.94,13.49', bounded: 1,
+  });
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    resultsEl.innerHTML = '';
+    if (!data.length) {
+      resultsEl.innerHTML = '<div style="cursor:default">ไม่พบผลลัพธ์</div>';
+    }
+    for (const r of data) {
+      const d = document.createElement('div');
+      d.textContent = r.display_name;
+      d.onclick = () => {
+        resultsEl.style.display = 'none';
+        qEl.value = r.display_name.split(',')[0];
+        const lngLat = [+r.lon, +r.lat];
+        stopSpin();
+        marker?.remove();
+        marker = new maplibregl.Marker({ color: '#e5484d' }).setLngLat(lngLat).addTo(map);
+        map.flyTo({ center: lngLat, zoom: 16.5, pitch: 60, duration: 3000 });
+      };
+      resultsEl.appendChild(d);
+    }
+    resultsEl.style.display = 'block';
+  } catch {
+    resultsEl.innerHTML = '<div style="cursor:default">ค้นหาไม่สำเร็จ</div>';
+    resultsEl.style.display = 'block';
+  }
+}
+
+// --- mobile collapse
+document.getElementById('toggle').onclick = () => {
+  const panel = document.getElementById('panel');
+  panel.classList.toggle('collapsed');
+  document.getElementById('toggle').textContent = panel.classList.contains('collapsed') ? '▸' : '▾';
+};
+if (window.innerWidth <= 600) document.getElementById('toggle').click();
+</script>
+</body>
+</html>
