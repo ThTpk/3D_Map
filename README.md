@@ -22,6 +22,17 @@ python -m http.server 8080
 ```
 แล้วเปิด http://localhost:8080
 
+## หน้าโรงเรียนบดินทรเดชา (bodindecha.html)
+โมเดล 3D จากภาพถ่ายจริง (Google Photorealistic 3D Tiles + CesiumJS) ตัดเฉพาะในรั้วโรงเรียน มีป้ายชื่ออาคาร
+
+1. เปิดใช้ **Map Tiles API** ใน Google Cloud และจำกัด key ด้วย HTTP referrer
+2. คัดลอก `config.example.js` เป็น `config.js` แล้วใส่ key (ไฟล์นี้ไม่ถูก commit) หรือกรอก key ในหน้าเว็บ
+3. เปิด http://localhost:8080/bodindecha.html
+
+ข้อมูลอาคาร (ชื่อ คำอธิบาย จำนวนชั้น ความสูง ทรงหลังคา สี) อยู่ใน `buildings.js` แก้ไขได้โดยตรง
+โมเดลอาคารสร้างจากรูปทรงใน OpenStreetMap ยกสูงตามจำนวนชั้น พร้อมหน้าต่างทุกชั้นและหลังคาทรงปั้นหยาหรือจั่ว
+กดปุ่ม "บันทึกภาพ" เพื่อเก็บภาพ PNG หรือ "โมเดล .glb" เพื่อส่งออกโมเดลไปเปิดใน Blender / 3D Viewer
+
 ## ที่มาของข้อมูล
 - [MapLibre GL JS](https://maplibre.org/) — ตัวแสดงแผนที่
 - [OpenFreeMap](https://openfreemap.org/) / [OpenStreetMap](https://www.openstreetmap.org/copyright) — ข้อมูลแผนที่และอาคาร
