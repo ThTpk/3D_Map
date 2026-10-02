@@ -71,6 +71,15 @@
     font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
   }
   .chip:hover { background: var(--chip-hover); }
+  .feature-link {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--chip-bg);
+    color: var(--text); text-decoration: none;
+  }
+  .feature-link:hover { background: var(--chip-hover); border-color: var(--accent); }
+  .feature-icon { font-size: 22px; line-height: 1; }
+  .feature-link b { display: block; font-size: 13px; font-weight: 600; }
+  .feature-link small { display: block; font-size: 11px; color: var(--muted); }
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   .row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
@@ -110,6 +119,12 @@
 
     <h2>สถานที่สำคัญ</h2>
     <div class="chips" id="places"></div>
+
+    <h2>แผนที่ละเอียด</h2>
+    <a class="feature-link" href="bodindecha.html">
+      <span class="feature-icon">🏫</span>
+      <span><b>โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี)</b><small>โมเดลอาคาร 3D · ข้อมูลอาคาร · ส่งออก .glb</small></span>
+    </a>
 
     <h2>รูปแบบแผนที่</h2>
     <div class="chips" id="styles"></div>
