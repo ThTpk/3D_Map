@@ -8,8 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
 <script>window.CESIUM_BASE_URL = "https://cdn.jsdelivr.net/npm/cesium@1.122.0/Build/Cesium/";</script>
 <script src="https://cdn.jsdelivr.net/npm/cesium@1.122.0/Build/Cesium/Cesium.js"></script>
-<!-- config.js (ไม่อยู่ใน git) กำหนด window.GOOGLE_MAPS_API_KEY ดู config.example.js -->
-<script src="config.js"></script>
 <script src="buildings.js"></script>
 <style>
   :root {
@@ -87,16 +85,6 @@
     color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
   }
 
-  .keyform { display: flex; flex-direction: column; gap: 8px; }
-  .keyform input {
-    padding: 8px 10px; font: inherit; font-size: 14px;
-    border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text);
-  }
-  .keyform button {
-    padding: 8px 10px; font: inherit; font-size: 14px; border: none; border-radius: 8px;
-    background: var(--accent); color: #fff; cursor: pointer;
-  }
-  .error { color: #d4473b; font-size: 13px; }
   .hidden { display: none !important; }
 
   @media (max-width: 600px) {
@@ -113,15 +101,9 @@
 <div class="panel" id="panel">
   <button class="toggle-btn" id="toggle" aria-label="ย่อ/ขยาย">▾</button>
   <h1>โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี)</h1>
-  <p class="sub">โมเดล 3 มิติจากภาพถ่ายจริง · Google Photorealistic 3D Tiles</p>
+  <p class="sub">โมเดลอาคาร 3 มิติ · ภาพดาวเทียม Esri</p>
 
   <div class="body">
-    <div id="keyBox" class="keyform hidden">
-      <p>ใส่ Google Maps API key (ต้องเปิดใช้ <b>Map Tiles API</b>) ระบบจะเก็บไว้ในเบราว์เซอร์นี้เท่านั้น</p>
-      <input id="keyInput" type="password" placeholder="AIza..." autocomplete="off">
-      <button id="keySave">เริ่มแสดงแผนที่</button>
-    </div>
-    <p id="err" class="error hidden"></p>
 
     <div id="controls" class="hidden">
       <h2>อาคาร</h2>
@@ -151,7 +133,7 @@
         <li>Ctrl+ลาก หรือลากปุ่มกลาง = เอียงกล้อง</li>
         <li>มือถือใช้ 1–2 นิ้ว</li>
       </ul>
-      <p><a href="index.html">← กลับแผนที่กรุงเทพฯ</a> · <a href="#" id="remeasure">วัดความสูงใหม่</a> · <a href="#" id="resetKey">เปลี่ยน API key</a></p>
+      <p><a href="index.html">← กลับแผนที่กรุงเทพฯ</a></p>
     </div>
   </div>
 </div>
@@ -176,31 +158,16 @@ const SCHOOL_OUTLINE = [
   [100.614933, 13.765945], [100.614928, 13.765973], [100.614873, 13.766287], [100.614811, 13.766639],
   [100.614610, 13.767777], [100.614593, 13.767879]
 ];
-// จุดพื้นสนาม ใช้หาระดับพื้นดินจากโมเดล Google
-const GROUND_SAMPLES = [
-  [100.6150355, 13.7693944], [100.6150464, 13.7673248], [100.6151782, 13.7665590],
-  [100.6147443, 13.7682406], [100.6150124, 13.7688535]
-];
-
 const CENTER = { lon: 100.61515, lat: 13.76860 };
 const FLOOR_H = 3.6;          // ความสูงต่อชั้นโดยประมาณ (ม.)
 const WALL_PAD = 0.8;         // ขยายรอบอาคารให้คลุมอาคารในภาพถ่าย (ม.)
-const KEY_STORE = "bodindecha3d.googleKey";
-const HEIGHT_STORE = "bodindecha3d.heights.v1";
+const ESRI_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ESRI_CREDIT = "Imagery © Esri, Maxar, Earthstar Geographics";
 const BUILDINGS = window.SCHOOL_BUILDINGS || [];
 
 const $ = (id) => document.getElementById(id);
 const deg = (d) => Cesium.Math.toRadians(d);
 
-function store(k, v) {
-  try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; }
-}
-function unstore(k) { try { localStorage.removeItem(k); } catch (e) {} }
-
-function showError(msg) {
-  $("err").textContent = msg;
-  $("err").classList.remove("hidden");
-}
 function setStatus(msg) { $("status").textContent = msg || ""; }
 
 // ---------- เรขาคณิตในระนาบเมตรรอบจุดกลางโรงเรียน ----------
@@ -275,11 +242,6 @@ function gridInside(p, step, max) {
   return Array.from({ length: max }, (_, i) => pts[Math.floor(i * k)]);
 }
 
-function percentile(arr, q) {
-  const s = arr.slice().sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.floor(q * s.length))];
-}
-
 // ---------- เตรียมข้อมูลอาคาร ----------
 BUILDINGS.forEach((b) => {
   if (b.footprint) {
@@ -299,52 +261,6 @@ BUILDINGS.forEach((b) => {
   }
   b.labelLL = toLL(b.labelXY);
 });
-
-// ---------- วัดความสูงจากโมเดล Google ----------
-async function measureHeights(scene, tileset) {
-  const cached = store(HEIGHT_STORE);
-  if (cached) { try { return JSON.parse(cached); } catch (e) {} }
-
-  setStatus("กำลังวัดความสูงอาคารจากโมเดล 3D…");
-  const groups = [];
-  const cartos = [];
-  const add = (key, ll) => { cartos.push(Cesium.Cartographic.fromDegrees(ll[0], ll[1])); groups.push(key); };
-
-  GROUND_SAMPLES.forEach((ll) => add("_ground", ll));
-  BUILDINGS.forEach((b) => {
-    if (!b.xy || b.model === false) return;
-    gridInside(offsetPolygon(b.xy, -1.2), 3, 40).forEach((q) => add(b.id, toLL(q)));
-    if (!groups.includes(b.id)) add(b.id, b.labelLL);
-  });
-
-  // รอให้ tiles ในมุมภาพรวมโหลดครบ แล้ววัดจาก tiles ที่แสดงอยู่ (เร็วกว่าโหลดละเอียดสุดทุกจุด)
-  await new Promise((resolve) => {
-    if (tileset.tilesLoaded) return resolve();
-    const done = () => { tileset.allTilesLoaded.removeEventListener(done); resolve(); };
-    tileset.allTilesLoaded.addEventListener(done);
-    setTimeout(done, 30000);
-  });
-
-  const by = {};
-  cartos.forEach((c, i) => {
-    const h = scene.sampleHeight(c);
-    if (h === undefined) return;
-    (by[groups[i]] = by[groups[i]] || []).push(h);
-  });
-  if (!by._ground) throw new Error("no ground samples");
-
-  const ground = percentile(by._ground, 0.5);
-  const heights = {};
-  BUILDINGS.forEach((b) => {
-    const hs = by[b.id];
-    if (!hs) return;
-    const h = percentile(hs, 0.7) - ground;
-    if (h > 2.5 && h < 80) heights[b.id] = Math.round(h * 10) / 10;
-  });
-  const result = { ground, heights };
-  store(HEIGHT_STORE, JSON.stringify(result));
-  return result;
-}
 
 // ---------- พื้นผิวอาคาร (วาดด้วย canvas) ----------
 function shade(hex, f) {
@@ -620,23 +536,11 @@ function download(blob, name) {
 }
 
 // ---------- แอป ----------
-function askForKey() {
-  $("keyBox").classList.remove("hidden");
-  $("keySave").onclick = () => {
-    const k = $("keyInput").value.trim();
-    if (!k) return;
-    store(KEY_STORE, k);
-    $("keyBox").classList.add("hidden");
-    start(k);
-  };
-}
-
-async function start(key) {
-  Cesium.GoogleMaps.defaultApiKey = key;
-
+function start() {
   const viewer = new Cesium.Viewer("map", {
-    globe: false,
-    baseLayer: false,
+    baseLayer: new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+      url: ESRI_URL, maximumLevel: 19, credit: ESRI_CREDIT
+    })),
     baseLayerPicker: false,
     geocoder: false,
     homeButton: false,
@@ -651,39 +555,24 @@ async function start(key) {
   const scene = viewer.scene;
   scene.skyAtmosphere.show = true;
   scene.backgroundColor = Cesium.Color.fromCssColorString("#0e1117");
+  scene.globe.baseColor = Cesium.Color.fromCssColorString("#0e1117");
+  scene.globe.showGroundAtmosphere = false;
 
   // แสงคงที่จากทิศตะวันออกเฉียงใต้ ให้โมเดลอาคารมีมิติไม่ว่าเวลาใด
   const enu = Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(CENTER.lon, CENTER.lat));
   const sun = Cesium.Matrix4.multiplyByPointAsVector(enu, new Cesium.Cartesian3(-0.45, 0.5, -0.74), new Cesium.Cartesian3());
   scene.light = new Cesium.DirectionalLight({ direction: Cesium.Cartesian3.normalize(sun, sun), intensity: 2.2 });
 
-  let tileset;
-  try {
-    tileset = await Cesium.createGooglePhotorealistic3DTileset();
-    scene.primitives.add(tileset);
-  } catch (e) {
-    console.error(e);
-    showError("โหลด 3D Tiles ไม่สำเร็จ ตรวจว่า key ถูกต้อง เปิด Map Tiles API แล้ว และอนุญาตโดเมนนี้ใน Google Cloud");
-    askForKey();
-    return;
-  }
-  tileset.tileFailed.addEventListener((e) => {
-    if (String(e.message).match(/40[13]/)) {
-      showError("Google ปฏิเสธ key (401/403) ตรวจการเปิด Map Tiles API และข้อจำกัด HTTP referrer");
-    }
-  });
-
   // ตัดให้เหลือเฉพาะพื้นที่ในรั้วโรงเรียน
   const clip = new Cesium.ClippingPolygonCollection({
     polygons: [new Cesium.ClippingPolygon({
-      positions: Cesium.Cartesian3.fromDegreesArray(SCHOOL_OUTLINE.flat())
+      positions: Cesium.Cartesian3.fromDegreesArray(SCHOOL_OUTLINE.map(toXY).map(toLL).flat())
     })],
     inverse: true
   });
-  tileset.clippingPolygons = clip;
+  scene.globe.clippingPolygons = clip;
 
-  // ระดับพื้นเริ่มต้น (ประมาณค่า geoid กรุงเทพฯ) ก่อนวัดจริง
-  let ground = -28;
+  const ground = 0;   // ภาพดาวเทียมวางบนผิวทรงรีโลก (ไม่มีข้อมูลความสูงภูมิประเทศ)
   const sphereAt = (ll, h, r) => new Cesium.BoundingSphere(Cesium.Cartesian3.fromDegrees(ll[0], ll[1], ground + h), r);
 
   function flyHome(duration) {
@@ -709,26 +598,14 @@ async function start(key) {
   $("controls").classList.remove("hidden");
   flyHome(0);
 
-  // วัดความสูง แล้วจึงสร้างโมเดลและป้ายชื่อ
-  let measured = { heights: {} };
-  try {
-    measured = await measureHeights(scene, tileset);
-    ground = measured.ground;
-    setStatus(Object.keys(measured.heights).length
-      ? "ความสูงบางอาคารวัดจากโมเดล 3D ของ Google (คลาดเคลื่อนได้ ±1–2 ม.)"
-      : "โมเดล Google บริเวณนี้ยังเป็นภาพแบน ความสูงอาคารใช้จำนวนชั้นจาก buildings.js");
-  } catch (e) {
-    console.error(e);
-    setStatus("วัดความสูงไม่สำเร็จ ใช้ค่าประมาณจากจำนวนชั้นแทน");
-  }
+  setStatus("ความสูงอาคารคำนวณจากจำนวนชั้นใน buildings.js");
 
   const modelEntities = [];
   const labelEntities = [];
 
   BUILDINGS.forEach((b) => {
-    const auto = measured.heights[b.id];
-    b.h = b.height ?? auto ?? (b.floors ? b.floors * FLOOR_H : (b.model === false ? 0 : 12));
-    b.hSource = b.height != null ? "กำหนดเอง" : auto != null ? "วัดจากโมเดล 3D" : "ประมาณ";
+    b.h = b.height ?? (b.floors ? b.floors * FLOOR_H : (b.model === false ? 0 : 12));
+    b.hSource = b.height != null ? "กำหนดเอง" : "ประมาณจากจำนวนชั้น";
     b.nFloors = b.floors ?? Math.max(1, Math.round(b.h / FLOOR_H));
 
     if (b.xy && b.model !== false) {
@@ -775,7 +652,7 @@ async function start(key) {
 
     labelEntities.push(viewer.entities.add({
       id: "label-" + b.id,
-      position: Cesium.Cartesian3.fromDegrees(b.labelLL[0], b.labelLL[1], ground + b.h + (b.model === false ? 2 : 4)),
+      position: Cesium.Cartesian3.fromDegrees(...toLL(b.labelXY), ground + b.h + (b.model === false ? 2 : 4)),
       label: {
         text: b.name,
         font: "600 15px 'Noto Sans Thai', sans-serif",
@@ -883,7 +760,7 @@ async function start(key) {
       const g = out.getContext("2d");
       g.drawImage(src, 0, 0);
       const fs = Math.round(out.height / 50);
-      const credit = "โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี) · ภาพพื้น © Google · อาคาร © OpenStreetMap contributors";
+      const credit = `โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี) · ภาพพื้น © Esri, Maxar, Earthstar Geographics · อาคาร © OpenStreetMap contributors`;
       g.font = `600 ${fs}px 'Noto Sans Thai', sans-serif`;
       g.fillStyle = "rgba(0,0,0,0.55)";
       g.fillRect(0, out.height - fs * 1.8, g.measureText(credit).width + fs * 1.4, fs * 1.8);
@@ -905,8 +782,6 @@ async function start(key) {
     download(new Blob([bytes], { type: "model/gltf-binary" }), "bodindecha-3d.glb");
   };
 
-  $("remeasure").onclick = (e) => { e.preventDefault(); unstore(HEIGHT_STORE); location.reload(); };
-  $("resetKey").onclick = (e) => { e.preventDefault(); unstore(KEY_STORE); location.reload(); };
 }
 
 $("toggle").onclick = () => {
@@ -915,8 +790,10 @@ $("toggle").onclick = () => {
   $("toggle").textContent = p.classList.contains("collapsed") ? "▸" : "▾";
 };
 
-const key = window.GOOGLE_MAPS_API_KEY || store(KEY_STORE);
-if (key) start(key); else askForKey();
+// ลบ key และค่าที่เคยบันทึกจากเวอร์ชันก่อน (ไม่ใช้แล้ว)
+try { ["bodindecha3d.googleKey", "bodindecha3d.heights.v1"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+
+start();
 </script>
 </body>
 </html>
