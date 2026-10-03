@@ -311,6 +311,12 @@ BUILDINGS.forEach((b) => {
   // อาคารหนึ่งหลังมีได้หลายปีก (parts) แต่ละปีกเป็นสี่เหลี่ยมพร้อมทรงหลังคาของตัวเอง
   const parts = b.parts || (b.footprint ? [{ footprint: b.footprint }] : []);
   b.parts = parts.map((p) => ({ ...b, ...p, parts: undefined, xy: p.footprint.map(toXY) }));
+  // voids ที่ระบุ fromEnd: true นับระยะย้อนจากปลายสุดของปีก (ค่าติดลบ = เข้ามาในปีก)
+  b.parts.forEach((p) => {
+    if (!p.voids) return;
+    const L = partAxis(p).L;
+    p.voids = p.voids.map((v) => v.fromEnd ? { ...v, from: L + v.from, to: L + v.to } : v);
+  });
   if (b.parts.length) {
     b.xy = b.parts[0].xy;
     const c = centroid(b.xy);
