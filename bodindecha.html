@@ -324,6 +324,28 @@ function voidParts(part) {
   return out;
 }
 
+// อัฒจันทร์แบบขั้นเปิดโล่ง: part.bleachers = { rows, rise, front: "left" | "right" }
+// ขั้นต่ำสุดอยู่ด้านหน้า (ฝั่งสนาม) ไล่สูงขึ้นไปด้านหลัง มีแผงกั้นเฉียงแบ่งช่วงและราวด้านหลัง
+function bleacherParts(part) {
+  const ax = partAxis(part), half = ax.half;
+  const cfg = part.bleachers, rows = cfg.rows || 8, rise = cfg.rise || 0.42;
+  const sign = cfg.front === "right" ? -1 : 1;           // left = ฝั่งซ้ายของแนวปลายเริ่ม→ปลายสุด
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const depth = (2 * half) / rows, H = rows * rise;
+  const sAt = (i) => sign * (half - i * depth);           // ระยะจากแนวกลางของขอบหน้าแถวที่ i
+  const steps = [];
+  for (let i = 0; i < rows; i++) {
+    steps.push({ h: (i + 1) * rise, pts: [at(0, sAt(i)), at(ax.L, sAt(i)), at(ax.L, sAt(i + 1)), at(0, sAt(i + 1))] });
+  }
+  const dividers = [];
+  const nDiv = Math.max(2, Math.round(ax.L / 10) + 1);
+  for (let k = 0; k < nDiv; k++) {
+    const t = ax.L * k / (nDiv - 1);
+    dividers.push({ a: at(t, sAt(0)), c: at(t, sAt(rows)), h0: rise + 0.8, h1: H + 0.9 });
+  }
+  return { steps, dividers, back: { a: at(0, sAt(rows)), c: at(ax.L, sAt(rows)), h: H }, H };
+}
+
 // บันไดภายนอก: b.stairs = [{ from: [lon,lat] เชิงบันได, to: [lon,lat] หัวบันได, width, height, base }]
 // แต่ละช่วงเป็นแผ่นพื้นลาดโปร่งใต้ (ไม่ทึบ) มีราวลูกกรงสองข้าง · base = ระดับเชิงบันได (เช่น ชานพัก)
 function stairParts(st) {
@@ -633,6 +655,16 @@ function buildGlb() {
     const slabM = material("slab", "#d9dde2");
     const colM = material("column", "#f4f5f7");
     for (const part of b.parts) {
+      if (part.bleachers) {
+        const bl = bleacherParts(part), stepM = material("bleacher", "#cfd2d6");
+        bl.steps.forEach((st) => {
+          poly(prims, stepM, st.pts.map(([x, y]) => [x, y, st.h]));
+          st.pts.forEach((q, i) => quad(prims, stepM, q, st.pts[(i + 1) % 4], 0, st.h));
+        });
+        bl.dividers.forEach((d) => poly(prims, colM, [[...d.a, 0], [...d.c, 0], [...d.c, d.h1], [...d.a, d.h0]]));
+        quad(prims, colM, bl.back.a, bl.back.c, bl.H + 0.95, bl.H + 1.1);
+        continue;
+      }
       const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
       const top = part.height ?? b.h;
       const isHall = b.nFloors === 1 && top > 5;
@@ -892,6 +924,35 @@ function start() {
       const base = ground - 1.5, top = ground + ph;
       const closed = ring.concat([ring[0]]);
       const isHall = b.nFloors === 1 && ph > 5;
+      if (part.bleachers) {
+        const bl = bleacherParts(part), id = "wall-" + b.id + "-" + pi;
+        bl.steps.forEach((st, i) => modelEntities.push(viewer.entities.add({
+          id: id + "-s" + i,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(st.pts.map(toLL).flat()),
+            height: ground, extrudedHeight: ground + st.h,
+            material: Cesium.Color.fromCssColorString(i % 2 ? "#c3c7cc" : "#d3d6da")
+          }
+        })));
+        bl.dividers.forEach((d, i) => modelEntities.push(viewer.entities.add({
+          id: id + "-d" + i,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(d.a), ...toLL(d.c)]),
+            minimumHeights: [ground, ground], maximumHeights: [ground + d.h0, ground + d.h1],
+            material: Cesium.Color.fromCssColorString("#e6e8eb")
+          }
+        })));
+        modelEntities.push(viewer.entities.add({
+          id: id + "-h0",
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(bl.back.a), ...toLL(bl.back.c)]),
+            minimumHeights: [ground + bl.H, ground + bl.H], maximumHeights: [ground + bl.H + 1.1, ground + bl.H + 1.1],
+            material: new Cesium.ImageMaterialProperty({ image: balusters(), transparent: true,
+              repeat: new Cesium.Cartesian2(Math.max(1, Math.round(partAxis(part).L / 1.2)), 1) })
+          }
+        }));
+        return;
+      }
       const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
 
       const tex = (len, floors) => new Cesium.ImageMaterialProperty({
