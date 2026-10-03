@@ -87,10 +87,29 @@
 
   .hidden { display: none !important; }
 
+  .walkpad {
+    position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 3;
+    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 8px;
+    padding: 12px; border-radius: 18px;
+    background: var(--panel-bg); border: 1px solid var(--border); box-shadow: var(--shadow);
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .walkpad button {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--chip-bg); color: var(--text);
+    font-size: 22px; cursor: pointer; touch-action: none;
+  }
+  .walkpad button:active, .walkpad button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .walkpad .exit { font-size: 13px; font-family: inherit; }
+  .walkhint {
+    position: absolute; left: 50%; bottom: 196px; transform: translateX(-50%); z-index: 3;
+    font-size: 12px; color: var(--text); background: var(--panel-bg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 12px; white-space: nowrap;
+  }
   @media (max-width: 600px) {
     .panel { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; max-height: 45vh; }
     .toggle-btn { display: block; }
     .panel.collapsed .body { display: none; }
+    .walkhint { white-space: normal; text-align: center; width: calc(100% - 32px); border-radius: 12px; }
     .info { top: auto; bottom: 34px; left: 8px; right: 8px; width: auto; max-width: none; max-height: 45vh; overflow-y: auto; }
   }
 </style>
@@ -121,6 +140,7 @@
         <button class="chip" id="home">ภาพรวม</button>
         <button class="chip" id="top">มุมบน</button>
         <button class="chip" id="spin">หมุนรอบ</button>
+        <button class="chip" id="walk">🚶 เดินในโรงเรียน</button>
         <button class="chip" id="snap">📷 บันทึกภาพ</button>
         <button class="chip" id="glb">⬇ โมเดล .glb</button>
       </div>
@@ -136,6 +156,16 @@
       <p><a href="index.html">← กลับแผนที่กรุงเทพฯ</a></p>
     </div>
   </div>
+</div>
+
+<div class="walkhint hidden" id="walkhint">W/↑ เดินหน้า · S/↓ ถอยหลัง · A/D เลี้ยว · Shift = เร็วขึ้น · ลากเมาส์ = มองรอบ</div>
+<div class="walkpad hidden" id="walkpad">
+  <button class="exit" id="walkExit" title="ออกจากโหมดเดิน">ออก</button>
+  <button data-move="fwd" title="เดินหน้า" aria-label="เดินหน้า">▲</button>
+  <span></span>
+  <button data-move="left" title="เลี้ยวซ้าย" aria-label="เลี้ยวซ้าย">⟲</button>
+  <button data-move="back" title="ถอยหลัง" aria-label="ถอยหลัง">▼</button>
+  <button data-move="right" title="เลี้ยวขวา" aria-label="เลี้ยวขวา">⟳</button>
 </div>
 
 <div class="info hidden" id="info">
@@ -1075,12 +1105,12 @@ function start() {
     const btn = document.createElement("button");
     btn.className = "chip";
     btn.textContent = b.name;
-    btn.onclick = () => { stopSpin(); flyBuilding(b); showInfo(b); };
+    btn.onclick = () => { stopSpin(); if (walk.on) exitWalk(false); flyBuilding(b); showInfo(b); };
     wrap.appendChild(btn);
   });
 
-  $("home").onclick = () => { stopSpin(); flyHome(); };
-  $("top").onclick = () => { stopSpin(); flyTop(); };
+  $("home").onclick = () => { stopSpin(); if (walk.on) return exitWalk(); flyHome(); };
+  $("top").onclick = () => { stopSpin(); if (walk.on) exitWalk(false); flyTop(); };
 
   const toggler = (id, get, set) => {
     $(id).onclick = (e) => {
@@ -1111,6 +1141,137 @@ function start() {
     $("spin").classList.add("on");
   };
   viewer.screenSpaceEventHandler.setInputAction(stopSpin, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+  // ---------- โหมดเดินในโรงเรียน (มุมมองบุคคลที่หนึ่ง) ----------
+  const EYE = 1.6, WALK_SPEED = 1.6, TURN_SPEED = Cesium.Math.toRadians(70);
+  const outlineXY = SCHOOL_OUTLINE.map(toXY);
+  const walk = { on: false, pos: [0, 0], heading: 0, pitch: 0, keys: new Set(), pad: new Set(), last: 0, dirty: false };
+
+  // จุดที่เดินผ่านไม่ได้: ในตัวอาคาร ยกเว้นทางเดินโล่งและช่องโล่งใต้อาคาร
+  function blocked(q) {
+    if (!inside(q, outlineXY)) return true;
+    for (const b of BUILDINGS) {
+      if (b.model === false) continue;
+      for (const part of b.parts) {
+        if (part.walkway) continue;
+        if (!inside(q, offsetPolygon(part.xy, WALL_PAD + 0.9))) continue;   // เว้นระยะจากผนังไม่ให้กล้องชิดเกินไป
+        if (part.voids) {
+          const t = partAxis(part).t(q);
+          if (part.voids.some((v) => t > v.from && t < v.to)) continue;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function placeWalkCamera() {
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(...toLL(walk.pos), ground + EYE),
+      orientation: { heading: walk.heading, pitch: walk.pitch, roll: 0 }
+    });
+  }
+
+  function walkTick() {
+    if (!walk.on) return;
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - walk.last) / 1000);
+    walk.last = now;
+    const k = walk.keys, p = walk.pad;
+    const fwd = (k.has("w") || k.has("arrowup") || p.has("fwd") ? 1 : 0) - (k.has("s") || k.has("arrowdown") || p.has("back") ? 1 : 0);
+    const turn = (k.has("d") || k.has("arrowright") || p.has("right") ? 1 : 0) - (k.has("a") || k.has("arrowleft") || p.has("left") ? 1 : 0);
+    if (turn) walk.heading = Cesium.Math.zeroToTwoPi(walk.heading + turn * TURN_SPEED * dt);
+    if (fwd) {
+      const step = fwd * WALK_SPEED * (k.has("shift") ? 2.5 : 1) * dt;
+      // heading วัดจากทิศเหนือตามเข็มนาฬิกา: x = ตะวันออก, y = เหนือ
+      const dx = Math.sin(walk.heading) * step, dy = Math.cos(walk.heading) * step;
+      const tryMove = (q) => { if (!blocked(q)) { walk.pos = q; return true; } return false; };
+      // ชนผนังแล้วไถลไปตามผนัง
+      tryMove([walk.pos[0] + dx, walk.pos[1] + dy]) || tryMove([walk.pos[0] + dx, walk.pos[1]]) || tryMove([walk.pos[0], walk.pos[1] + dy]);
+    }
+    if (fwd || turn || walk.dirty) { placeWalkCamera(); walk.dirty = false; }
+  }
+
+  function setControls(enabled) {
+    const c = scene.screenSpaceCameraController;
+    c.enableRotate = c.enableTranslate = c.enableZoom = c.enableTilt = c.enableLook = enabled;
+  }
+
+  function enterWalk() {
+    stopSpin();
+    $("info").classList.add("hidden");
+    // เริ่มเดินจากจุดกลางจอถ้าอยู่ในโรงเรียน ไม่เช่นนั้นเริ่มที่ลานหน้าอาคารเฉลิมพระเกียรติ
+    let start = toXY([100.61495, 13.76838]), heading = Cesium.Math.toRadians(75);
+    const ray = viewer.camera.getPickRay(new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2));
+    const hit = ray && scene.globe.pick(ray, scene);
+    if (hit) {
+      const c = Cesium.Cartographic.fromCartesian(hit);
+      const q = toXY([Cesium.Math.toDegrees(c.longitude), Cesium.Math.toDegrees(c.latitude)]);
+      if (!blocked(q)) { start = q; heading = viewer.camera.heading; }
+    }
+    Object.assign(walk, { on: true, pos: start, heading, pitch: Cesium.Math.toRadians(-2), last: performance.now(), dirty: true });
+    walk.keys.clear();
+    walk.pad.clear();
+    setControls(false);
+    viewer.camera.frustum.fov = Cesium.Math.toRadians(75);
+    $("walk").classList.add("on");
+    $("walkpad").classList.remove("hidden");
+    $("walkhint").classList.remove("hidden");
+    if (window.matchMedia("(max-width: 600px)").matches) $("panel").classList.add("collapsed");
+    placeWalkCamera();
+  }
+
+  function exitWalk(fly = true) {
+    if (!walk.on) return;
+    walk.on = false;
+    setControls(true);
+    viewer.camera.frustum.fov = Cesium.Math.toRadians(60);
+    $("walk").classList.remove("on");
+    $("walkpad").classList.add("hidden");
+    $("walkhint").classList.add("hidden");
+    if (fly) flyHome();
+  }
+
+  viewer.clock.shouldAnimate = true;
+  viewer.clock.onTick.addEventListener(walkTick);
+  $("walk").onclick = () => (walk.on ? exitWalk() : enterWalk());
+  $("walkExit").onclick = () => exitWalk();
+
+  // ปุ่มบนจอ: กดค้างเพื่อเดิน/เลี้ยว
+  document.querySelectorAll("#walkpad [data-move]").forEach((btn) => {
+    const m = btn.dataset.move;
+    const down = (e) => { e.preventDefault(); walk.pad.add(m); btn.classList.add("on"); btn.setPointerCapture?.(e.pointerId); };
+    const up = () => { walk.pad.delete(m); btn.classList.remove("on"); };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("lostpointercapture", up);
+  });
+
+  // คีย์บอร์ด
+  window.addEventListener("keydown", (e) => {
+    if (!walk.on || e.target.tagName === "INPUT") return;
+    const key = e.key.toLowerCase();
+    if (key === "escape") return exitWalk();
+    if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift"].includes(key)) {
+      walk.keys.add(key);
+      e.preventDefault();
+    }
+  });
+  window.addEventListener("keyup", (e) => walk.keys.delete(e.key.toLowerCase()));
+  window.addEventListener("blur", () => walk.keys.clear());
+
+  // ลากเมาส์/นิ้วบนฉากเพื่อหันมองรอบ
+  let drag = null;
+  scene.canvas.addEventListener("pointerdown", (e) => { if (walk.on) drag = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener("pointerup", () => { drag = null; });
+  window.addEventListener("pointermove", (e) => {
+    if (!walk.on || !drag) return;
+    walk.heading = Cesium.Math.zeroToTwoPi(walk.heading + (e.clientX - drag.x) * 0.004);
+    walk.pitch = Cesium.Math.clamp(walk.pitch - (e.clientY - drag.y) * 0.004, Cesium.Math.toRadians(-60), Cesium.Math.toRadians(60));
+    drag = { x: e.clientX, y: e.clientY };
+    walk.dirty = true;
+  });
 
   // บันทึกภาพมุมกล้องปัจจุบันเป็น PNG (ความละเอียด 2 เท่า) พร้อมเครดิตแหล่งข้อมูล
   $("snap").onclick = () => {
