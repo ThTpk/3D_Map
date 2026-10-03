@@ -573,7 +573,10 @@ function buildGlb() {
           poly(prims, slabM, sl.pts.map(([x, y]) => [x, y, sl.z - 0.35]));
           sl.pts.forEach((q, i) => quad(prims, slabM, q, sl.pts[(i + 1) % 4], sl.z - 0.35, sl.z));
         });
-        w.rails.forEach((r) => quad(prims, colM, r.a, r.c, r.z, r.z + 1.1));
+        w.rails.forEach((r) => {
+          quad(prims, colM, r.a, r.c, r.z, r.z + 1.1);
+          if (part.walkway.arches) quad(prims, colM, r.a, r.c, r.z + FLOOR_H - 1.1, r.z + FLOOR_H - 0.35);   // คานซุ้มโค้ง
+        });
       }
       if (!part.walkway) wallSegments(part, ring).forEach(({ a, c, open }) => {
         const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
@@ -698,6 +701,30 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// ผนังซุ้มโค้งโปร่ง (ช่องเปิดโปร่งใส) หนึ่งช่องเสา × หนึ่งชั้น สำหรับทางเดินแบบมีซุ้มโค้ง
+let archScreenCanvas = null;
+function archScreen() {
+  if (archScreenCanvas) return archScreenCanvas;
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f4f5f7";
+  g.fillRect(0, 0, 256, 256);
+  g.globalCompositeOperation = "destination-out";
+  g.beginPath();
+  g.moveTo(32, 256); g.lineTo(32, 122); g.arc(128, 122, 96, Math.PI, 0); g.lineTo(224, 256); g.closePath();
+  g.fill();
+  g.globalCompositeOperation = "source-over";
+  g.fillStyle = "#e9ebee";
+  g.fillRect(0, 0, 256, 10);                     // คานบน
+  g.fillStyle = "#c9ced4";                       // ราวกันตกโลหะ
+  g.fillRect(32, 182, 192, 6);
+  g.fillRect(32, 218, 192, 3);
+  for (let x = 44; x < 224; x += 22) g.fillRect(x, 182, 3, 74);
+  archScreenCanvas = c;
+  return c;
+}
+
 // ---------- แอป ----------
 function start() {
   const viewer = new Cesium.Viewer("map", {
@@ -799,15 +826,23 @@ function start() {
           solid(c, 1.4, ph, "#f4f5f7", id + "-k" + ci);
         });
         w.slabs.forEach((sl, si) => solid(sl.pts, sl.z - 0.35, sl.z, "#e6e8eb", id + "-s" + si));
-        w.rails.forEach((r, ri) => modelEntities.push(viewer.entities.add({
-          id: id + "-h" + ri,
-          wall: {
-            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(r.a), ...toLL(r.c)]),
-            minimumHeights: [ground + r.z, ground + r.z],
-            maximumHeights: [ground + r.z + 1.1, ground + r.z + 1.1],
-            material: Cesium.Color.fromCssColorString("#f4f5f7")
-          }
-        })));
+        const arches = part.walkway.arches;
+        w.rails.forEach((r, ri) => {
+          const len = Math.hypot(r.c[0] - r.a[0], r.c[1] - r.a[1]);
+          const zTop = ground + r.z + (arches ? FLOOR_H - 0.35 : 1.1);
+          modelEntities.push(viewer.entities.add({
+            id: id + "-h" + ri,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(r.a), ...toLL(r.c)]),
+              minimumHeights: [ground + r.z, ground + r.z],
+              maximumHeights: [zTop, zTop],
+              material: arches
+                ? new Cesium.ImageMaterialProperty({ image: archScreen(), transparent: true,
+                    repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / 3.6)), 1) })
+                : Cesium.Color.fromCssColorString("#f4f5f7")
+            }
+          }));
+        });
       } else if (!part.voids) {
         modelEntities.push(viewer.entities.add({
           id: "wall-" + b.id + "-" + pi,
