@@ -244,8 +244,11 @@ function gridInside(p, step, max) {
 
 // ---------- เตรียมข้อมูลอาคาร ----------
 BUILDINGS.forEach((b) => {
-  if (b.footprint) {
-    b.xy = b.footprint.map(toXY);
+  // อาคารหนึ่งหลังมีได้หลายปีก (parts) แต่ละปีกเป็นสี่เหลี่ยมพร้อมทรงหลังคาของตัวเอง
+  const parts = b.parts || (b.footprint ? [{ footprint: b.footprint }] : []);
+  b.parts = parts.map((p) => ({ ...b, ...p, parts: undefined, xy: p.footprint.map(toXY) }));
+  if (b.parts.length) {
+    b.xy = b.parts[0].xy;
     const c = centroid(b.xy);
     if (inside(c, b.xy)) b.labelXY = c;
     else {
@@ -253,7 +256,8 @@ BUILDINGS.forEach((b) => {
       b.labelXY = g.reduce((best, q) =>
         Math.hypot(q[0] - c[0], q[1] - c[1]) < Math.hypot(best[0] - c[0], best[1] - c[1]) ? q : best, g[0] || c);
     }
-    const xs = b.xy.map((q) => q[0]), ys = b.xy.map((q) => q[1]);
+    const all = b.parts.flatMap((p) => p.xy);
+    const xs = all.map((q) => q[0]), ys = all.map((q) => q[1]);
     b.size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
   } else {
     b.labelXY = toXY(b.center);
@@ -311,31 +315,40 @@ function facade(wall, type) {
 // หลังคาทรงจั่ว (gable) / ทรงปั้นหยา (hip) สำหรับอาคารสี่เหลี่ยม คืนค่า null ถ้าเป็นหลังคาแบน
 function pitchedRoof(b, top) {
   if (!b.roofType || b.roofType === "flat") return null;
-  if (b.roofType === "hip") return hipRoof(b, top);
+  if (b.roofType === "hip" && !b.ends) return hipRoof(b, top);
   if (b.xy.length !== 4) return null;
   let p = offsetPolygon(b.xy, WALL_PAD + 0.7);               // ชายคายื่นออกจากผนัง
   const len = (a, c) => Math.hypot(c[0] - a[0], c[1] - a[1]);
-  if (len(p[0], p[1]) > len(p[1], p[2])) p = [p[1], p[2], p[3], p[0]];  // ให้ p0-p1 เป็นด้านสั้น
+  // ให้ p0-p1 เป็นด้านหน้าจั่ว (ตั้งฉากกับสันหลังคา) · ridgeEdge ใน buildings.js บังคับทิศสันได้
+  // ปีกอาคารที่มี ends: จุด 1→2 คือปลายเริ่ม สันหลังคาวิ่งตามความยาวปีกเสมอ
+  const ridgeAlongFirst = b.ends ? false : b.ridgeEdge != null ? b.ridgeEdge === 0 : len(p[0], p[1]) > len(p[1], p[2]);
+  if (ridgeAlongFirst) p = [p[1], p[2], p[3], p[0]];
   const mid = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
   const width = (len(p[0], p[1]) + len(p[2], p[3])) / 2;
   const rise = width * 0.32;
   let r0 = mid(p[0], p[1]), r1 = mid(p[2], p[3]);
-  if (b.roofType === "hip") {
-    const L = len(r0, r1), k = Math.min(width / 2, L / 2 - 0.01) / L;
-    const d = [(r1[0] - r0[0]) * k, (r1[1] - r0[1]) * k];
-    r0 = [r0[0] + d[0], r0[1] + d[1]];
-    r1 = [r1[0] - d[0], r1[1] - d[1]];
-  }
+  // ปลายแต่ละด้าน: "hip" = ลาดปั้นหยา, "gable" = หน้าจั่ว (ใช้ตรงจุดที่ปีกไปชนอาคารอื่น สันจะต่อกันพอดี)
+  const ends = b.ends || (b.roofType === "hip" ? ["hip", "hip"] : ["gable", "gable"]);
+  const L = len(r0, r1), k = Math.min(width / 2, L / 2 - 0.01) / L;
+  const d = [(r1[0] - r0[0]) * k, (r1[1] - r0[1]) * k];
+  const r0e = ends[0] === "hip" ? [r0[0] + d[0], r0[1] + d[1]] : r0;
+  const r1e = ends[1] === "hip" ? [r1[0] - d[0], r1[1] - d[1]] : r1;
+  r0 = r0e; r1 = r1e;
   const z = top, zr = top + rise;
   const P = (q) => [q[0], q[1], z], R = (q) => [q[0], q[1], zr];
   const roof = b.roof || "#8a857c";
-  const endColor = b.roofType === "hip" ? shadeHex(roof, -0.08) : (b.wall || "#ece6d6");
-  return [
+  const endColor = (e) => e === "hip" ? shadeHex(roof, -0.08) : (b.wall || "#ece6d6");
+  const faces = [
     { pts: [P(p[1]), P(p[2]), R(r1), R(r0)], color: roof },
     { pts: [P(p[3]), P(p[0]), R(r0), R(r1)], color: shadeHex(roof, -0.15) },
-    { pts: [P(p[0]), P(p[1]), R(r0)], color: endColor },
-    { pts: [P(p[2]), P(p[3]), R(r1)], color: endColor }
+    { pts: [P(p[0]), P(p[1]), R(r0)], color: endColor(ends[0]) },
+    { pts: [P(p[2]), P(p[3]), R(r1)], color: endColor(ends[1]) }
   ];
+  // ครอบสันและครอบตะเข้ (เส้นสีขาวบนหลังคาจริง)
+  faces.ridges = [[R(r0), R(r1)]];
+  if (ends[0] === "hip") faces.ridges.push([R(r0), P(p[0])], [R(r0), P(p[1])]);
+  if (ends[1] === "hip") faces.ridges.push([R(r1), P(p[2])], [R(r1), P(p[3])]);
+  return faces;
 }
 // หลังคาปั้นหยาสำหรับอาคารรูปทรงใดก็ได้: ลาดจากชายคาขึ้นไปหาแนวสันที่หดเข้าด้านใน
 function hipRoof(b, top) {
@@ -359,6 +372,8 @@ function hipRoof(b, top) {
     };
   });
   faces.push({ pts: inner.map(([x, y]) => [x, y, zr]), color: shadeHex(roof, 0.25) });   // สันหลังคา (สีอ่อนเหมือนครอบสัน)
+  faces.ridges = ccw.map((q, k) => [[q[0], q[1], top], [inner[k][0], inner[k][1], zr]])
+    .concat(inner.map((q, k) => [[q[0], q[1], zr], [inner[(k + 1) % inner.length][0], inner[(k + 1) % inner.length][1], zr]]));
   return faces;
 }
 function shadeHex(hex, f) {
@@ -425,44 +440,46 @@ function buildGlb() {
     const prims = {};
     const wallM = material("wall-" + b.id, b.wall || "#ece6d6");
     const roofM = material("roof-" + b.id, b.roof || "#8a857c");
-    const ring = offsetPolygon(b.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
-    const top = b.h;
-    const isHall = b.nFloors === 1 && b.h > 5;
+    for (const part of b.parts) {
+      const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
+      const top = b.h;
+      const isHall = b.nFloors === 1 && b.h > 5;
 
-    ring.forEach((a, i) => {
-      const c = ring[(i + 1) % ring.length];
-      const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
-      const nx = (c[1] - a[1]) / L, ny = -(c[0] - a[0]) / L;     // ทิศออกนอกอาคาร
-      quad(prims, wallM, a, c, 0, top);
-      if (L < 2.5) return;
-      const at = (t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t];
-      if (isHall) {
-        quad(prims, vent, at(0.4 / L), at(1 - 0.4 / L), top - 3.2, top - 1.2, 0.05, nx, ny);
-        return;
-      }
-      const bays = Math.max(1, Math.round(L / 3.6)), bw = L / bays;
-      for (let f = 0; f < b.nFloors; f++) {
-        const z0 = f * FLOOR_H + 0.9, z1 = z0 + 1.9;
-        if (z1 > top - 0.3) break;
-        for (let k = 0; k < bays; k++) {
-          const t0 = (k * bw + bw * 0.15) / L, t1 = ((k + 1) * bw - bw * 0.15) / L;
-          quad(prims, glass, at(t0), at(t1), z0, z1, 0.05, nx, ny);
+      ring.forEach((a, i) => {
+        const c = ring[(i + 1) % ring.length];
+        const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        const nx = (c[1] - a[1]) / L, ny = -(c[0] - a[0]) / L;     // ทิศออกนอกอาคาร
+        quad(prims, wallM, a, c, 0, top);
+        if (L < 2.5) return;
+        const at = (t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t];
+        if (isHall) {
+          quad(prims, vent, at(0.4 / L), at(1 - 0.4 / L), top - 3.2, top - 1.2, 0.05, nx, ny);
+          return;
         }
-      }
-    });
-
-    const faces = pitchedRoof(b, top);
-    if (faces) {
-      faces.forEach((f) => {
-        const m = f.color === (b.wall || "#ece6d6") ? wallM : roofM;
-        poly(prims, m, f.pts);
+        const bays = Math.max(1, Math.round(L / 3.6)), bw = L / bays;
+        for (let f = 0; f < b.nFloors; f++) {
+          const z0 = f * FLOOR_H + 0.9, z1 = z0 + 1.9;
+          if (z1 > top - 0.3) break;
+          for (let k = 0; k < bays; k++) {
+            const t0 = (k * bw + bw * 0.15) / L, t1 = ((k + 1) * bw - bw * 0.15) / L;
+            quad(prims, glass, at(t0), at(t1), z0, z1, 0.05, nx, ny);
+          }
+        }
       });
-      // ฝ้าใต้ชายคา
-      const eave = offsetPolygon(b.xy, WALL_PAD + 0.7);
-      poly(prims, roofM, eave.map(([x, y]) => [x, y, top]));
-    } else {
-      ring.forEach((a, i) => quad(prims, wallM, a, ring[(i + 1) % ring.length], top, top + 0.9));
-      poly(prims, roofM, ring.map(([x, y]) => [x, y, top + 0.9]));
+
+      const faces = pitchedRoof(part, top);
+      if (faces) {
+        faces.forEach((f) => {
+          const m = f.color === (b.wall || "#ece6d6") ? wallM : roofM;
+          poly(prims, m, f.pts);
+        });
+        // ฝ้าใต้ชายคา
+        const eave = offsetPolygon(part.xy, WALL_PAD + 0.7);
+        poly(prims, roofM, eave.map(([x, y]) => [x, y, top]));
+      } else {
+        ring.forEach((a, i) => quad(prims, wallM, a, ring[(i + 1) % ring.length], top, top + 0.9));
+        poly(prims, roofM, ring.map(([x, y]) => [x, y, top + 0.9]));
+      }
     }
     addMesh(b.name, prims);
   });
@@ -608,15 +625,15 @@ function start() {
     b.hSource = b.height != null ? "กำหนดเอง" : "ประมาณจากจำนวนชั้น";
     b.nFloors = b.floors ?? Math.max(1, Math.round(b.h / FLOOR_H));
 
-    if (b.xy && b.model !== false) {
-      const ring = offsetPolygon(b.xy, WALL_PAD).map(toLL);
+    if (b.model !== false) b.parts.forEach((part, pi) => {
+      const ring = offsetPolygon(part.xy, WALL_PAD).map(toLL);
       const base = ground - 1.5, top = ground + b.h;
       const closed = ring.concat([ring[0]]);
       const isHall = b.nFloors === 1 && b.h > 5;
-      const per = perimeter(offsetPolygon(b.xy, WALL_PAD));
+      const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
 
       modelEntities.push(viewer.entities.add({
-        id: "wall-" + b.id,
+        id: "wall-" + b.id + "-" + pi,
         wall: {
           positions: Cesium.Cartesian3.fromDegreesArray(closed.flat()),
           minimumHeights: closed.map(() => base),
@@ -627,10 +644,19 @@ function start() {
           })
         }
       }));
-      const faces = pitchedRoof(b, top);
+      const faces = pitchedRoof(part, top);
       if (faces) {
+        (faces.ridges || []).forEach((r, i) => modelEntities.push(viewer.entities.add({
+          id: "roof-" + b.id + "-" + pi + "-r" + i,
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArrayHeights(r.flatMap(([x, y, z]) => [...toLL([x, y]), z + 0.08])),
+            width: 3,
+            arcType: Cesium.ArcType.NONE,
+            material: Cesium.Color.fromCssColorString("#e9ecef")
+          }
+        })));
         faces.forEach((f, i) => modelEntities.push(viewer.entities.add({
-          id: "roof-" + b.id + "-" + i,
+          id: "roof-" + b.id + "-" + pi + "-" + i,
           polygon: {
             hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights(f.pts.flatMap(([x, y, z]) => [...toLL([x, y]), z])),
             perPositionHeight: true,
@@ -639,7 +665,7 @@ function start() {
         })));
       } else {
         modelEntities.push(viewer.entities.add({
-          id: "roof-" + b.id,
+          id: "roof-" + b.id + "-" + pi,
           polygon: {
             hierarchy: Cesium.Cartesian3.fromDegreesArray(ring.flat()),
             height: top,
@@ -648,7 +674,7 @@ function start() {
           }
         }));
       }
-    }
+    });
 
     labelEntities.push(viewer.entities.add({
       id: "label-" + b.id,
@@ -697,7 +723,7 @@ function start() {
   viewer.screenSpaceEventHandler.setInputAction((e) => {
     const picked = scene.pick(e.position);
     const id = picked && picked.id && picked.id.id;
-    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/-\d+$/, "")];
+    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-r?\d+)+$/, "")];
     if (b) showInfo(b);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
