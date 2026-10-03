@@ -230,6 +230,59 @@ function perimeter(p) {
   return s;
 }
 
+// ---------- ช่องโล่งใต้อาคาร (voids) ----------
+// part.voids = [{ from, to, floors }] ระยะ (เมตร) ตามแนวยาวปีกนับจากปลายเริ่ม ชั้นล่าง floors ชั้นเปิดโล่งมีแต่เสา
+const lerp2 = (a, c, f) => [a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f];
+function partAxis(part) {
+  const p = part.xy, m = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+  const O = m(p[0], p[1]), E = m(p[2], p[3]);
+  const L = Math.hypot(E[0] - O[0], E[1] - O[1]);
+  const u = [(E[0] - O[0]) / L, (E[1] - O[1]) / L];
+  const half = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) / 2;
+  return { O, u, n: [-u[1], u[0]], half, t: (q) => (q[0] - O[0]) * u[0] + (q[1] - O[1]) * u[1] };
+}
+// แบ่งขอบผนังเป็นช่วง คืนค่า [{ a, c, open }] open = จำนวนชั้นที่เปิดโล่ง (0 = ผนังเต็ม)
+function wallSegments(part, ring) {
+  const voids = part.voids || [];
+  const edges = ring.map((a, i) => [a, ring[(i + 1) % ring.length]]);
+  if (!voids.length) return edges.map(([a, c]) => ({ a, c, open: 0 }));
+  const ax = partAxis(part), segs = [];
+  edges.forEach(([a, c]) => {
+    const ta = ax.t(a), tc = ax.t(c), cuts = [0, 1];
+    if (Math.abs(tc - ta) > 1e-6) voids.forEach((v) => [v.from, v.to].forEach((tv) => {
+      const f = (tv - ta) / (tc - ta);
+      if (f > 0 && f < 1) cuts.push(f);
+    }));
+    cuts.sort((x, y) => x - y);
+    for (let k = 0; k < cuts.length - 1; k++) {
+      if (cuts[k + 1] - cuts[k] < 1e-6) continue;
+      const tm = ax.t(lerp2(a, c, (cuts[k] + cuts[k + 1]) / 2));
+      const v = voids.find((v) => tm > v.from && tm < v.to);
+      segs.push({ a: lerp2(a, c, cuts[k]), c: lerp2(a, c, cuts[k + 1]), open: v ? v.floors : 0 });
+    }
+  });
+  return segs;
+}
+// เสาและพื้นชั้นบนของช่องโล่ง (พิกัดเมตร) สำหรับวาดทั้งในฉากและไฟล์ .glb
+function voidParts(part) {
+  const ax = partAxis(part), out = [];
+  const half = ax.half + WALL_PAD;
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const square = (t, s, r) => [at(t - r, s - r), at(t + r, s - r), at(t + r, s + r), at(t - r, s + r)];
+  (part.voids || []).forEach((v) => {
+    const h = v.floors * FLOOR_H;
+    const slab = [at(v.from, -half), at(v.to, -half), at(v.to, half), at(v.from, half)];
+    const cols = [];
+    const count = Math.max(2, Math.round((v.to - v.from) / 7.5) + 1);
+    for (let i = 0; i < count; i++) {
+      const t = v.from + 0.4 + (v.to - v.from - 0.8) * i / (count - 1);
+      cols.push(square(t, -half + 0.4, 0.35), square(t, half - 0.4, 0.35));
+    }
+    out.push({ h, slab, cols });
+  });
+  return out;
+}
+
 // จุดตัวอย่างภายในอาคาร ห่างกัน ~step เมตร
 function gridInside(p, step, max) {
   const xs = p.map((q) => q[0]), ys = p.map((q) => q[1]);
@@ -274,8 +327,8 @@ function shade(hex, f) {
 }
 
 const facadeCache = {};
-function facade(wall, type) {
-  const key = wall + type;
+function facade(wall, type, accent) {
+  const key = wall + type + (accent || "");
   if (facadeCache[key]) return facadeCache[key];
   const c = document.createElement("canvas");
   c.width = c.height = 128;
@@ -307,6 +360,11 @@ function facade(wall, type) {
     g.fillRect(12, 100, 104, 5);                     // ขอบล่างหน้าต่าง
     g.fillStyle = "rgba(255,255,255,0.18)";
     g.fillRect(20, 34, 38, 10);                      // แสงสะท้อน
+    if (accent) {
+      g.fillStyle = accent;                          // เสาสีประจำอาคารระหว่างช่องหน้าต่าง
+      g.fillRect(0, 0, 7, 128);
+      g.fillRect(121, 0, 7, 128);
+    }
   }
   facadeCache[key] = c;
   return c;
@@ -440,16 +498,20 @@ function buildGlb() {
     const prims = {};
     const wallM = material("wall-" + b.id, b.wall || "#ece6d6");
     const roofM = material("roof-" + b.id, b.roof || "#8a857c");
+    const accentM = b.accent ? material("accent-" + b.id, b.accent) : null;
+    const slabM = material("slab", "#d9dde2");
+    const colM = material("column", "#f4f5f7");
     for (const part of b.parts) {
       const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
       const top = b.h;
       const isHall = b.nFloors === 1 && b.h > 5;
 
-      ring.forEach((a, i) => {
-        const c = ring[(i + 1) % ring.length];
+      wallSegments(part, ring).forEach(({ a, c, open }) => {
         const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        if (L < 1e-3) return;
         const nx = (c[1] - a[1]) / L, ny = -(c[0] - a[0]) / L;     // ทิศออกนอกอาคาร
-        quad(prims, wallM, a, c, 0, top);
+        const zBase = open * FLOOR_H;                                // ช่วงเปิดโล่ง: ผนังเริ่มที่ชั้นบน
+        quad(prims, wallM, a, c, zBase, top);
         if (L < 2.5) return;
         const at = (t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t];
         if (isHall) {
@@ -457,7 +519,11 @@ function buildGlb() {
           return;
         }
         const bays = Math.max(1, Math.round(L / 3.6)), bw = L / bays;
-        for (let f = 0; f < b.nFloors; f++) {
+        if (accentM) for (let k = 0; k <= bays; k++) {             // เสาสีประจำอาคาร
+          const t = k * bw / L, w = 0.22 / L;
+          quad(prims, accentM, at(Math.max(0, t - w)), at(Math.min(1, t + w)), zBase, top, 0.07, nx, ny);
+        }
+        for (let f = open; f < b.nFloors; f++) {
           const z0 = f * FLOOR_H + 0.9, z1 = z0 + 1.9;
           if (z1 > top - 0.3) break;
           for (let k = 0; k < bays; k++) {
@@ -465,6 +531,15 @@ function buildGlb() {
             quad(prims, glass, at(t0), at(t1), z0, z1, 0.05, nx, ny);
           }
         }
+      });
+
+      voidParts(part).forEach((v) => {
+        poly(prims, slabM, v.slab.map(([x, y]) => [x, y, v.h - 0.35]));          // ฝ้าใต้ชั้นบน
+        v.cols.forEach((sq) => sq.forEach((q, i) => {
+          const r = sq[(i + 1) % 4];
+          quad(prims, accentM || wallM, q, r, 0, 1.4);
+          quad(prims, colM, q, r, 1.4, v.h - 0.35);
+        }));
       });
 
       const faces = pitchedRoof(part, top);
@@ -632,18 +707,51 @@ function start() {
       const isHall = b.nFloors === 1 && b.h > 5;
       const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
 
-      modelEntities.push(viewer.entities.add({
-        id: "wall-" + b.id + "-" + pi,
-        wall: {
-          positions: Cesium.Cartesian3.fromDegreesArray(closed.flat()),
-          minimumHeights: closed.map(() => base),
-          maximumHeights: closed.map(() => top),
-          material: new Cesium.ImageMaterialProperty({
-            image: facade(b.wall || "#ece6d6", isHall ? "hall" : "floor"),
-            repeat: new Cesium.Cartesian2(Math.max(1, Math.round(per / (isHall ? 6 : 3.6))), isHall ? 1 : b.nFloors)
-          })
-        }
-      }));
+      const tex = (len, floors) => new Cesium.ImageMaterialProperty({
+        image: facade(b.wall || "#ece6d6", isHall ? "hall" : "floor", b.accent),
+        repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / (isHall ? 6 : 3.6))), isHall ? 1 : Math.max(1, floors))
+      });
+      if (!part.voids) {
+        modelEntities.push(viewer.entities.add({
+          id: "wall-" + b.id + "-" + pi,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray(closed.flat()),
+            minimumHeights: closed.map(() => base),
+            maximumHeights: closed.map(() => top),
+            material: tex(per, b.nFloors)
+          }
+        }));
+      } else {
+        // ผนังแบ่งช่วง: ช่วงที่เปิดโล่งเริ่มผนังที่ชั้นบน
+        wallSegments(part, offsetPolygon(part.xy, WALL_PAD)).forEach((sg, si) => {
+          const len = Math.hypot(sg.c[0] - sg.a[0], sg.c[1] - sg.a[1]);
+          const z0 = sg.open ? ground + sg.open * FLOOR_H : base;
+          modelEntities.push(viewer.entities.add({
+            id: "wall-" + b.id + "-" + pi + "-" + si,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(sg.a), ...toLL(sg.c)]),
+              minimumHeights: [z0, z0],
+              maximumHeights: [top, top],
+              material: tex(len, b.nFloors - sg.open)
+            }
+          }));
+        });
+        voidParts(part).forEach((v, vi) => {
+          const poly = (pts, z0, z1, color, id) => modelEntities.push(viewer.entities.add({
+            id,
+            polygon: {
+              hierarchy: Cesium.Cartesian3.fromDegreesArray(pts.map(toLL).flat()),
+              height: ground + z0, extrudedHeight: ground + z1,
+              material: Cesium.Color.fromCssColorString(color)
+            }
+          }));
+          poly(v.slab, v.h - 0.35, v.h, "#d9dde2", "wall-" + b.id + "-" + pi + "-v" + vi);
+          v.cols.forEach((c, ci) => {
+            poly(c, 0, 1.4, b.accent || "#24409a", "wall-" + b.id + "-" + pi + "-c" + vi + "-" + ci);
+            poly(c, 1.4, v.h - 0.35, "#f4f5f7", "wall-" + b.id + "-" + pi + "-k" + vi + "-" + ci);
+          });
+        });
+      }
       const faces = pitchedRoof(part, top);
       if (faces) {
         (faces.ridges || []).forEach((r, i) => modelEntities.push(viewer.entities.add({
@@ -723,7 +831,7 @@ function start() {
   viewer.screenSpaceEventHandler.setInputAction((e) => {
     const picked = scene.pick(e.position);
     const id = picked && picked.id && picked.id.id;
-    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-r?\d+)+$/, "")];
+    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[rvck]?\d+)+$/, "")];
     if (b) showInfo(b);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 

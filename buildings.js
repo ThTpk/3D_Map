@@ -9,7 +9,8 @@
 // model     : false = ไม่สร้างโมเดลอาคาร (เช่น สนาม) แสดงแค่ป้ายชื่อ
 // roofType  : "flat" หลังคาแบน, "hip" ปั้นหยา, "gable" จั่ว (gable ใช้ได้กับอาคารสี่เหลี่ยมเท่านั้น)
 // ridgeEdge : (หลังคาจั่ว) สันหลังคาขนานกับด้านที่ 0 (จุด1→2) หรือ 1 (จุด2→3) ถ้าไม่ระบุจะขนานด้านยาว
-// wall/roof : สีผนังและหลังคาของโมเดล
+// wall/roof : สีผนังและหลังคาของโมเดล · accent = สีเสาระหว่างช่องหน้าต่าง
+// voids     : (ในแต่ละ part) ช่องโล่งใต้อาคาร [{ from, to, floors }] ระยะเมตรตามแนวยาวนับจากปลายเริ่ม
 // desc      : คำอธิบาย (ข้อความที่ยังไม่มีข้อมูลยืนยัน ขึ้นต้นด้วย "รอข้อมูล")
 // source    : ที่มาของข้อมูล
 
@@ -38,7 +39,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b1", name: "ตึก 1", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], footprint: [[100.6146955,13.7677875],[100.6147166,13.7676725],[100.6156832,13.76784],[100.615662,13.7679549]] }
     ]
@@ -47,7 +48,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b2", name: "ตึก 2", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], footprint: [[100.6147574,13.7674652],[100.6147789,13.7673503],[100.6157394,13.7675193],[100.615718,13.7676342]] }
     ]
@@ -56,7 +57,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b3", name: "ตึก 3", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], footprint: [[100.6148208,13.7671487],[100.6148407,13.7670335],[100.6157964,13.7671896],[100.6157765,13.7673047]] }
     ]
@@ -65,7 +66,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b4", name: "ตึก 4", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], footprint: [[100.6148746,13.7668175],[100.6148956,13.7667025],[100.6155031,13.7668069],[100.6154821,13.7669219]] }
     ]
@@ -74,15 +75,15 @@ window.SCHOOL_BUILDINGS = [
     id: "b5", name: "ตึก 5", kind: "อาคารเรียน",
     desc: "รอข้อมูล — อาคารยาวแนวเหนือ–ใต้ฝั่งตะวันออก ตึก 1–3 ต่อเข้ากับอาคารนี้",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
-      { ends: ["hip", "hip"], footprint: [[100.6157282,13.7680084],[100.6156097,13.7679888],[100.6158333,13.7667116],[100.6159518,13.7667312]] }
+      { ends: ["hip", "hip"], voids: [{ from: 18.5, to: 40.1, floors: 2 }, { from: 54.7, to: 77.3, floors: 2 }], footprint: [[100.6157282,13.7680084],[100.6156097,13.7679888],[100.6158333,13.7667116],[100.6159518,13.7667312]] }
     ]
   },  {
     id: "link", name: "อาคารเชื่อม", kind: "อาคารเรียน (แนวเหนือ–ใต้)",
     desc: "รอข้อมูล — อาคารแนวเหนือ–ใต้ที่เชื่อมตึก 1–4 ตรงกลาง และปิดลานกลางฝั่งตะวันตก วาดจากภาพดาวเทียม",
     source: "ภาพดาวเทียม Esri",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", roof: "#3c4149", roofType: "hip",
     parts: [
       { ends: ["gable", "gable"], footprint: [[100.6153977,13.7678356],[100.6152791,13.7678161],[100.6153308,13.7675211],[100.6154493,13.7675407]] },
       { ends: ["gable", "gable"], footprint: [[100.615454,13.7675141],[100.6153354,13.7674945],[100.6153877,13.7671956],[100.6155063,13.7672152]] },
