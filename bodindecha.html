@@ -294,6 +294,44 @@ function voidParts(part) {
   return out;
 }
 
+// บันไดภายนอก: b.stairs = [{ from: [lon,lat] เชิงบันได, to: [lon,lat] หัวบันได, width, height, base }]
+// แต่ละช่วงเป็นแผ่นพื้นลาดโปร่งใต้ (ไม่ทึบ) มีราวลูกกรงสองข้าง · base = ระดับเชิงบันได (เช่น ชานพัก)
+function stairParts(st) {
+  const a = toXY(st.from), c = toXY(st.to);
+  const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const u = [(c[0] - a[0]) / L, (c[1] - a[1]) / L], nrm = [-u[1], u[0]], h = (st.width || 4) / 2;
+  const off = (p, k) => [p[0] + nrm[0] * k, p[1] + nrm[1] * k];
+  const z0 = st.base || 0, H = st.height || FLOOR_H, z1 = z0 + H, T = 0.35;   // T = ความหนาท้องบันได
+  const steps = [];
+  const nSteps = Math.max(2, Math.round(H / 0.17));
+  for (let i = 1; i < nSteps; i++) {
+    const f = i / nSteps, p = [a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f];
+    steps.push([[...off(p, -h), z0 + H * f + 0.02], [...off(p, h), z0 + H * f + 0.02]]);
+  }
+  const band = (k) => [[...off(a, k), z0 - T], [...off(c, k), z1 - T], [...off(c, k), z1], [...off(a, k), z0]];
+  return {
+    slope: [[...off(a, -h), z0], [...off(a, h), z0], [...off(c, h), z1], [...off(c, -h), z1]],
+    under: [[...off(a, -h), z0 - T], [...off(a, h), z0 - T], [...off(c, h), z1 - T], [...off(c, -h), z1 - T]],
+    stringers: [band(-h), band(h)],
+    sides: [[off(a, -h + 0.12), off(c, -h + 0.12)], [off(a, h - 0.12), off(c, h - 0.12)]],
+    z0, z1, steps
+  };
+}
+// ลูกกรงราวบันได (โปร่ง) ใช้กับผนังราว
+let balusterCanvas = null;
+function balusters() {
+  if (balusterCanvas) return balusterCanvas;
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f4f5f7";
+  g.fillRect(0, 0, 128, 12);                      // ราวมือจับ
+  g.fillRect(0, 56, 128, 8);                      // ราวล่าง
+  for (let x = 4; x < 128; x += 16) g.fillRect(x, 12, 6, 44);   // ลูกกรง
+  balusterCanvas = c;
+  return c;
+}
+
 // ทางเดินเชื่อมเปิดโล่ง: เสา พื้นทางเดินแต่ละชั้น และราวกันตก (พิกัดเมตร)
 function walkwayParts(part, floors) {
   const ax = partAxis(part), half = ax.half;
@@ -305,10 +343,18 @@ function walkwayParts(part, floors) {
     const t = 0.3 + (ax.L - 0.6) * i / (count - 1);
     cols.push(square(t, -half + 0.3, 0.25), square(t, half - 0.3, 0.25));
   }
+  if (part.walkway.frontCols) {                 // เสาเรียงด้านหน้า (ปลายเริ่ม) สำหรับมุขเปิดโล่ง
+    const n2 = Math.max(2, Math.round(2 * half / 4) + 1);
+    for (let i = 1; i < n2 - 1; i++) cols.push(square(0.3, -half + 0.3 + (2 * half - 0.6) * i / (n2 - 1), 0.25));
+  }
+  // ราวกันตก: ค่าเริ่มต้นสองข้างตามแนวยาว · walkway.rails = ["front", "left", "right"] เลือกเองได้
+  const railSides = part.walkway.rails || ["left", "right"];
   for (let f = part.walkway.open; f < floors; f++) {
     const z = f * FLOOR_H;
     slabs.push({ z, pts: [at(0, -half - 0.4), at(ax.L, -half - 0.4), at(ax.L, half + 0.4), at(0, half + 0.4)] });
-    rails.push({ z, a: at(0, -half - 0.35), c: at(ax.L, -half - 0.35) }, { z, a: at(0, half + 0.35), c: at(ax.L, half + 0.35) });
+    if (railSides.includes("right")) rails.push({ z, a: at(0, -half - 0.35), c: at(ax.L, -half - 0.35) });
+    if (railSides.includes("left")) rails.push({ z, a: at(0, half + 0.35), c: at(ax.L, half + 0.35) });
+    if (railSides.includes("front")) rails.push({ z, a: at(-0.35, -half - 0.35), c: at(-0.35, half + 0.35) });
   }
   return { cols, slabs, rails };
 }
@@ -438,7 +484,7 @@ function pitchedRoof(b, top) {
   if (ridgeAlongFirst) p = [p[1], p[2], p[3], p[0]];
   const mid = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
   const width = (len(p[0], p[1]) + len(p[2], p[3])) / 2;
-  const rise = width * 0.32;
+  const rise = width * (b.pitch ?? 0.32);                    // pitch = ความชันหลังคา (สูง/กว้าง)
   let r0 = mid(p[0], p[1]), r1 = mid(p[2], p[3]);
   // ปลายแต่ละด้าน: "hip" = ลาดปั้นหยา, "gable" = หน้าจั่ว (ใช้ตรงจุดที่ปีกไปชนอาคารอื่น สันจะต่อกันพอดี)
   const ends = b.ends || (b.roofType === "hip" ? ["hip", "hip"] : ["gable", "gable"]);
@@ -630,6 +676,18 @@ function buildGlb() {
         poly(prims, roofM, ring.map(([x, y]) => [x, y, top + 0.9]));
       }
     }
+    (b.stairs || []).forEach((st) => {
+      const sp = stairParts(st);
+      poly(prims, material("stairs", "#a8553e"), sp.slope);
+      poly(prims, slabM, sp.under);
+      sp.stringers.forEach((f) => poly(prims, colM, f));
+      sp.sides.forEach(([a, c]) => poly(prims, colM, [[...a, sp.z0 + 0.85], [...c, sp.z1 + 0.85], [...c, sp.z1 + 1.0], [...a, sp.z0 + 1.0]]));
+    });
+    (b.platforms || []).forEach((pf) => {
+      const pts = pf.footprint.map(toXY);
+      poly(prims, material("stairs", "#a8553e"), pts.map(([x, y]) => [x, y, pf.height]));
+      pts.forEach((q, i) => quad(prims, colM, q, pts[(i + 1) % pts.length], 0, pf.height));
+    });
     addMesh(b.name, prims);
   });
 
@@ -924,6 +982,41 @@ function start() {
         }));
       }
     });
+
+    if (b.model !== false) (b.stairs || []).forEach((st, si) => {
+      const sp = stairParts(st), id = "wall-" + b.id + "-t" + si;
+      const LLH = (pts) => Cesium.Cartesian3.fromDegreesArrayHeights(pts.flatMap(([x, y, z]) => [...toLL([x, y]), ground + z]));
+      const face = (pts, color, k) => modelEntities.push(viewer.entities.add({
+        id: id + "-" + k, polygon: { hierarchy: LLH(pts), perPositionHeight: true, material: Cesium.Color.fromCssColorString(color) }
+      }));
+      face(sp.slope, "#a8553e", "p0");             // ขั้นบันไดสีอิฐ
+      face(sp.under, "#eceef1", "p1");             // ท้องบันได
+      sp.stringers.forEach((f, k) => face(f, "#f4f5f7", "g" + k));
+      sp.steps.forEach((ln, li) => modelEntities.push(viewer.entities.add({
+        id: id + "-l" + li,
+        polyline: { positions: LLH(ln), width: 1, arcType: Cesium.ArcType.NONE, material: Cesium.Color.fromCssColorString("#6e3526") }
+      })));
+      sp.sides.forEach(([a, c], k) => {
+        const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        modelEntities.push(viewer.entities.add({
+          id: id + "-b" + k,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
+            minimumHeights: [ground + sp.z0, ground + sp.z1], maximumHeights: [ground + sp.z0 + 1.0, ground + sp.z1 + 1.0],
+            material: new Cesium.ImageMaterialProperty({ image: balusters(), transparent: true, repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / 1.2)), 1) })
+          }
+        }));
+      });
+    });
+    // ชานพักบันได: b.platforms = [{ footprint, height }]
+    if (b.model !== false) (b.platforms || []).forEach((pf, pi2) => modelEntities.push(viewer.entities.add({
+      id: "wall-" + b.id + "-q" + pi2,
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(pf.footprint.flat()),
+        height: ground, extrudedHeight: ground + pf.height,
+        material: Cesium.Color.fromCssColorString("#d9c2b0")
+      }
+    })));
 
     labelEntities.push(viewer.entities.add({
       id: "label-" + b.id,
