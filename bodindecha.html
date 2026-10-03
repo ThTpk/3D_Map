@@ -294,6 +294,25 @@ function voidParts(part) {
   return out;
 }
 
+// ทางเดินเชื่อมเปิดโล่ง: เสา พื้นทางเดินแต่ละชั้น และราวกันตก (พิกัดเมตร)
+function walkwayParts(part, floors) {
+  const ax = partAxis(part), half = ax.half;
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const square = (t, s, r) => [at(t - r, s - r), at(t + r, s - r), at(t + r, s + r), at(t - r, s + r)];
+  const cols = [], slabs = [], rails = [];
+  const count = Math.max(2, Math.round(ax.L / 6) + 1);
+  for (let i = 0; i < count; i++) {
+    const t = 0.3 + (ax.L - 0.6) * i / (count - 1);
+    cols.push(square(t, -half + 0.3, 0.25), square(t, half - 0.3, 0.25));
+  }
+  for (let f = part.walkway.open; f < floors; f++) {
+    const z = f * FLOOR_H;
+    slabs.push({ z, pts: [at(0, -half - 0.4), at(ax.L, -half - 0.4), at(ax.L, half + 0.4), at(0, half + 0.4)] });
+    rails.push({ z, a: at(0, -half - 0.35), c: at(ax.L, -half - 0.35) }, { z, a: at(0, half + 0.35), c: at(ax.L, half + 0.35) });
+  }
+  return { cols, slabs, rails };
+}
+
 // จุดตัวอย่างภายในอาคาร ห่างกัน ~step เมตร
 function gridInside(p, step, max) {
   const xs = p.map((q) => q[0]), ys = p.map((q) => q[1]);
@@ -542,7 +561,21 @@ function buildGlb() {
       const top = part.height ?? b.h;
       const isHall = b.nFloors === 1 && top > 5;
 
-      wallSegments(part, ring).forEach(({ a, c, open }) => {
+      if (part.walkway) {
+        const w = walkwayParts(part, b.nFloors);
+        w.cols.forEach((sq) => sq.forEach((q, i) => {
+          const r = sq[(i + 1) % 4];
+          quad(prims, accentM || wallM, q, r, 0, 1.4);
+          quad(prims, colM, q, r, 1.4, top);
+        }));
+        w.slabs.forEach((sl) => {
+          poly(prims, slabM, sl.pts.map(([x, y]) => [x, y, sl.z]));
+          poly(prims, slabM, sl.pts.map(([x, y]) => [x, y, sl.z - 0.35]));
+          sl.pts.forEach((q, i) => quad(prims, slabM, q, sl.pts[(i + 1) % 4], sl.z - 0.35, sl.z));
+        });
+        w.rails.forEach((r) => quad(prims, colM, r.a, r.c, r.z, r.z + 1.1));
+      }
+      if (!part.walkway) wallSegments(part, ring).forEach(({ a, c, open }) => {
         const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
         if (L < 1e-3) return;
         const nx = (c[1] - a[1]) / L, ny = -(c[0] - a[0]) / L;     // ทิศออกนอกอาคาร
@@ -750,7 +783,32 @@ function start() {
         image: facade(b.wall || "#ece6d6", part.facade || (isHall ? "hall" : "floor"), b.accent),
         repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / (isHall ? 6 : 3.6))), isHall ? 1 : Math.max(1, floors))
       });
-      if (!part.voids) {
+      const solid = (pts, z0, z1, color, id) => modelEntities.push(viewer.entities.add({
+        id,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(pts.map(toLL).flat()),
+          height: ground + z0, extrudedHeight: ground + z1,
+          material: Cesium.Color.fromCssColorString(color)
+        }
+      }));
+      if (part.walkway) {
+        // ทางเดินเชื่อม: ไม่มีผนัง มีเสา พื้นทางเดิน และราว
+        const w = walkwayParts(part, b.nFloors), id = "wall-" + b.id + "-" + pi;
+        w.cols.forEach((c, ci) => {
+          solid(c, 0, 1.4, b.accent || "#24409a", id + "-c" + ci);
+          solid(c, 1.4, ph, "#f4f5f7", id + "-k" + ci);
+        });
+        w.slabs.forEach((sl, si) => solid(sl.pts, sl.z - 0.35, sl.z, "#e6e8eb", id + "-s" + si));
+        w.rails.forEach((r, ri) => modelEntities.push(viewer.entities.add({
+          id: id + "-h" + ri,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(r.a), ...toLL(r.c)]),
+            minimumHeights: [ground + r.z, ground + r.z],
+            maximumHeights: [ground + r.z + 1.1, ground + r.z + 1.1],
+            material: Cesium.Color.fromCssColorString("#f4f5f7")
+          }
+        })));
+      } else if (!part.voids) {
         modelEntities.push(viewer.entities.add({
           id: "wall-" + b.id + "-" + pi,
           wall: {
@@ -879,7 +937,7 @@ function start() {
   viewer.screenSpaceEventHandler.setInputAction((e) => {
     const picked = scene.pick(e.position);
     const id = picked && picked.id && picked.id.id;
-    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[rvckw]?\d+)+$/, "")];
+    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[a-z]?\d+)+$/, "")];
     if (b) showInfo(b);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
