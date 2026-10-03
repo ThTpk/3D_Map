@@ -239,7 +239,7 @@ function partAxis(part) {
   const L = Math.hypot(E[0] - O[0], E[1] - O[1]);
   const u = [(E[0] - O[0]) / L, (E[1] - O[1]) / L];
   const half = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) / 2;
-  return { O, u, n: [-u[1], u[0]], half, t: (q) => (q[0] - O[0]) * u[0] + (q[1] - O[1]) * u[1] };
+  return { O, u, L, n: [-u[1], u[0]], half, t: (q) => (q[0] - O[0]) * u[0] + (q[1] - O[1]) * u[1] };
 }
 // แบ่งขอบผนังเป็นช่วง คืนค่า [{ a, c, open }] open = จำนวนชั้นที่เปิดโล่ง (0 = ผนังเต็ม)
 function wallSegments(part, ring) {
@@ -278,7 +278,18 @@ function voidParts(part) {
       const t = v.from + 0.4 + (v.to - v.from - 0.8) * i / (count - 1);
       cols.push(square(t, -half + 0.4, 0.35), square(t, half - 0.4, 0.35));
     }
-    out.push({ h, slab, cols });
+    // ช่องโล่งที่เปิดออกด้านหัว/ท้ายอาคาร: เพิ่มเสาเรียงด้านนั้น · ขอบช่องโล่งที่อยู่ในอาคาร: มีผนังกั้น
+    const L = ax.L, walls = [];
+    [[v.from, v.from <= 0], [v.to, v.to >= L]].forEach(([t, openEnd]) => {
+      if (openEnd) {
+        const tc = t <= 0 ? v.from + 0.4 : v.to - 0.4;
+        const n2 = Math.max(2, Math.round(2 * half / 7.5) + 1);
+        for (let i = 1; i < n2 - 1; i++) cols.push(square(tc, -half + 0.4 + (2 * half - 0.8) * i / (n2 - 1), 0.35));
+      } else {
+        walls.push([at(t, -half), at(t, half)]);
+      }
+    });
+    out.push({ h, slab, cols, walls });
   });
   return out;
 }
@@ -336,7 +347,10 @@ function facade(wall, type, accent) {
   g.fillStyle = wall;
   g.fillRect(0, 0, 128, 128);
 
-  if (type === "hall") {
+  if (type === "plain") {
+    g.fillStyle = shade(wall, -0.06);
+    g.fillRect(0, 0, 128, 4);
+  } else if (type === "hall") {
     // อาคารสูงชั้นเดียว: ผนังทึบด้านล่าง ช่องระบายอากาศด้านบน
     g.fillStyle = shade(wall, -0.18);
     g.fillRect(0, 110, 128, 18);
@@ -344,6 +358,21 @@ function facade(wall, type, accent) {
     g.fillRect(8, 12, 112, 30);
     g.fillStyle = shade(wall, -0.05);
     for (let x = 8; x < 120; x += 8) g.fillRect(x, 12, 2, 30);
+  } else if (type === "arch") {
+    // หน้าต่างโค้ง (แบบอาคารเฉลิมพระเกียรติ)
+    g.fillStyle = shade(wall, -0.1);
+    g.fillRect(0, 0, 128, 10);
+    const glass = g.createLinearGradient(0, 15, 0, 108);
+    glass.addColorStop(0, "#5f7f7a");
+    glass.addColorStop(1, "#24383a");
+    g.fillStyle = glass;
+    g.beginPath();
+    g.moveTo(29, 108); g.lineTo(29, 50); g.arc(64, 50, 35, Math.PI, 0); g.lineTo(99, 108); g.closePath();
+    g.fill();
+    g.strokeStyle = shade(wall, 0.15); g.lineWidth = 3;
+    g.beginPath(); g.moveTo(64, 15); g.lineTo(64, 108); g.moveTo(29, 66); g.lineTo(99, 66); g.stroke();
+    g.fillStyle = shade(wall, -0.25);
+    g.fillRect(24, 108, 80, 5);
   } else {
     // หนึ่งช่องหน้าต่าง × หนึ่งชั้น
     g.fillStyle = shade(wall, -0.14);
@@ -364,6 +393,7 @@ function facade(wall, type, accent) {
       g.fillStyle = accent;                          // เสาสีประจำอาคารระหว่างช่องหน้าต่าง
       g.fillRect(0, 0, 7, 128);
       g.fillRect(121, 0, 7, 128);
+      g.fillRect(0, 12, 128, 3);                     // ขอบกันสาดสีเข้มใต้พื้นชั้น
     }
   }
   facadeCache[key] = c;
@@ -503,8 +533,8 @@ function buildGlb() {
     const colM = material("column", "#f4f5f7");
     for (const part of b.parts) {
       const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
-      const top = b.h;
-      const isHall = b.nFloors === 1 && b.h > 5;
+      const top = part.height ?? b.h;
+      const isHall = b.nFloors === 1 && top > 5;
 
       wallSegments(part, ring).forEach(({ a, c, open }) => {
         const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
@@ -514,6 +544,7 @@ function buildGlb() {
         quad(prims, wallM, a, c, zBase, top);
         if (L < 2.5) return;
         const at = (t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t];
+        if (part.facade === "plain") return;
         if (isHall) {
           quad(prims, vent, at(0.4 / L), at(1 - 0.4 / L), top - 3.2, top - 1.2, 0.05, nx, ny);
           return;
@@ -535,6 +566,7 @@ function buildGlb() {
 
       voidParts(part).forEach((v) => {
         poly(prims, slabM, v.slab.map(([x, y]) => [x, y, v.h - 0.35]));          // ฝ้าใต้ชั้นบน
+        v.walls.forEach(([a, c]) => quad(prims, wallM, a, c, 0, v.h));
         v.cols.forEach((sq) => sq.forEach((q, i) => {
           const r = sq[(i + 1) % 4];
           quad(prims, accentM || wallM, q, r, 0, 1.4);
@@ -702,13 +734,14 @@ function start() {
 
     if (b.model !== false) b.parts.forEach((part, pi) => {
       const ring = offsetPolygon(part.xy, WALL_PAD).map(toLL);
-      const base = ground - 1.5, top = ground + b.h;
+      const ph = part.height ?? b.h;                       // ปีกย่อยกำหนดความสูงเองได้
+      const base = ground - 1.5, top = ground + ph;
       const closed = ring.concat([ring[0]]);
-      const isHall = b.nFloors === 1 && b.h > 5;
+      const isHall = b.nFloors === 1 && ph > 5;
       const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
 
       const tex = (len, floors) => new Cesium.ImageMaterialProperty({
-        image: facade(b.wall || "#ece6d6", isHall ? "hall" : "floor", b.accent),
+        image: facade(b.wall || "#ece6d6", part.facade || (isHall ? "hall" : "floor"), b.accent),
         repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / (isHall ? 6 : 3.6))), isHall ? 1 : Math.max(1, floors))
       });
       if (!part.voids) {
@@ -746,6 +779,15 @@ function start() {
             }
           }));
           poly(v.slab, v.h - 0.35, v.h, "#d9dde2", "wall-" + b.id + "-" + pi + "-v" + vi);
+          v.walls.forEach(([a, c], wi) => modelEntities.push(viewer.entities.add({
+            id: "wall-" + b.id + "-" + pi + "-w" + vi + "-" + wi,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
+              minimumHeights: [base, base],
+              maximumHeights: [ground + v.h, ground + v.h],
+              material: tex(Math.hypot(c[0] - a[0], c[1] - a[1]), v.h / FLOOR_H)
+            }
+          })));
           v.cols.forEach((c, ci) => {
             poly(c, 0, 1.4, b.accent || "#24409a", "wall-" + b.id + "-" + pi + "-c" + vi + "-" + ci);
             poly(c, 1.4, v.h - 0.35, "#f4f5f7", "wall-" + b.id + "-" + pi + "-k" + vi + "-" + ci);
@@ -831,7 +873,7 @@ function start() {
   viewer.screenSpaceEventHandler.setInputAction((e) => {
     const picked = scene.pick(e.position);
     const id = picked && picked.id && picked.id.id;
-    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[rvck]?\d+)+$/, "")];
+    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[rvckw]?\d+)+$/, "")];
     if (b) showInfo(b);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
