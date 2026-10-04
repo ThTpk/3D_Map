@@ -131,6 +131,7 @@
       <h2>การแสดงผล</h2>
       <div class="chips">
         <button class="chip on" id="models">โมเดลอาคาร</button>
+        <button class="chip on" id="cement">พื้นปูน</button>
         <button class="chip on" id="clip">เฉพาะโรงเรียน</button>
         <button class="chip on" id="labels">ป้ายชื่อ</button>
       </div>
@@ -192,6 +193,7 @@ const CENTER = { lon: 100.61515, lat: 13.76860 };
 const FLOOR_H = 3.6;          // ความสูงต่อชั้นโดยประมาณ (ม.)
 const WALL_PAD = 0.8;         // ขยายรอบอาคารให้คลุมอาคารในภาพถ่าย (ม.)
 const ESRI_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const GROUND_COLOR = "#b4b3ad";   // พื้นปูนซีเมนต์
 const ESRI_CREDIT = "Imagery © Esri, Maxar, Earthstar Geographics";
 const BUILDINGS = window.SCHOOL_BUILDINGS || [];
 
@@ -727,6 +729,10 @@ function buildGlb() {
   // ฐานโรงเรียน
   const base = {};
   poly(base, material("ground", "#8f9a86"), SCHOOL_OUTLINE.map(toXY).map(([x, y]) => [x, y, -0.05]));
+  BUILDINGS.forEach((b) => {
+    if (b.model === false) return;
+    b.parts.forEach((part) => poly(base, material("cement", GROUND_COLOR), offsetPolygon(part.xy, WALL_PAD + 0.5).map(([x, y]) => [x, y, 0])));
+  });
   addMesh("พื้นโรงเรียน", base);
 
   const glass = material("glass", "#2c3c4d", 0.3, 0.15);
@@ -1023,6 +1029,19 @@ function start() {
   setStatus("ความสูงอาคารคำนวณจากจำนวนชั้นใน buildings.js");
 
   const modelEntities = [];
+  // พื้นปูนซีเมนต์เฉพาะใต้โมเดล 3D (ส่วนอื่นยังเป็นภาพดาวเทียม) ปิดได้ด้วยปุ่ม "พื้นปูน"
+  const cementPads = [];
+  BUILDINGS.forEach((b) => {
+    if (b.model === false) return;
+    b.parts.forEach((part, pi) => cementPads.push(viewer.entities.add({
+      id: "ground-" + b.id + "-" + pi,
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(offsetPolygon(part.xy, WALL_PAD + 0.5).map(toLL).flat()),
+        height: ground + 0.03,
+        material: Cesium.Color.fromCssColorString(GROUND_COLOR)
+      }
+    })));
+  });
   const labelEntities = [];
 
   BUILDINGS.forEach((b) => {
@@ -1339,6 +1358,7 @@ function start() {
       e.currentTarget.classList.toggle("on", on);
     };
   };
+  toggler("cement", () => cementPads.length > 0 && cementPads[0].show, (on) => cementPads.forEach((g) => g.show = on));
   toggler("models", () => modelEntities.length > 0 && modelEntities[0].show, (on) => modelEntities.forEach((m) => m.show = on));
   toggler("clip", () => clip.enabled, (on) => clip.enabled = on);
   toggler("labels", () => labelEntities[0].show, (on) => labelEntities.forEach((l) => l.show = on));
