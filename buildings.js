@@ -15,7 +15,8 @@
 // pitch     : (ในแต่ละ part) ความชันหลังคาจั่ว = ความสูงสัน / ความกว้าง (ค่าเริ่มต้น 0.32)
 // stairs    : บันไดภายนอก [{ from: เชิงบันได [lon,lat], to: หัวบันได [lon,lat], width, height, base }]
 // platforms : ชานพักบันได [{ footprint, height }]
-// facade    : ลายผนัง "floor" หน้าต่างสี่เหลี่ยม (ค่าเริ่มต้น), "ribbon" แถบหน้าต่างบานเล็กแบบตึกเรียน, "arch" หน้าต่างโค้ง, "hall" อาคารโถงสูง
+// sunshadeEdge : สีขอบกันสาด · decor side "start"/"end" = ผนังหัว/ท้ายของปีกแรก (from/to = ระยะข้ามความกว้าง)
+// facade    : ลายผนัง "teak" ไม้สักเรือนไทย, "floor" หน้าต่างสี่เหลี่ยม (ค่าเริ่มต้น), "ribbon" แถบหน้าต่างบานเล็กแบบตึกเรียน, "arch" หน้าต่างโค้ง, "hall" อาคารโถงสูง
 // sunshade  : กันสาดยื่นรอบอาคารทุกชั้น (เมตร)
 // decor     : ของตกแต่งด้านหน้า [{ type: "panel" | "canopy" | "plinth", side, from, to, ... }] อิงแนวของปีกแรก
 // voids     : (ในแต่ละ part) ช่องโล่งใต้อาคาร [{ from, to, floors }] ระยะเมตรตามแนวยาวนับจากปลายเริ่ม
@@ -29,10 +30,10 @@ window.SCHOOL_BUILDINGS = [
     id: "chalerm",
     name: "อาคารเฉลิมพระเกียรติ",
     kind: "อาคารเรียน / หอสมุด",
-    desc: "สร้างเมื่อ พ.ศ. 2530 ชั้นล่างเป็นที่ตั้งของหอสมุดคุณหญิงนครราชเสนี",
-    source: "วิกิพีเดีย",
+    desc: "อาคารเฉลิมพระเกียรติ ๖๐ พรรษา ๕ ธันวาคม ๒๕๓๐ (ป้ายที่มุขหน้าอาคาร) ชั้นล่างเป็นที่ตั้งของหอสมุดคุณหญิงนครราชเสนี หลังคามีแผงโซลาร์เซลล์",
+    source: "วิกิพีเดีย / ภาพจากคลิป YouTube",
     height: null, floors: 2, facade: "arch",
-    wall: "#f4f4f2", roof: "#5b616b", roofType: "gable",
+    wall: "#f4f4f2", roof: "#6f7c92", roofType: "gable",
     // ด้านหน้าหันไปทางสนาม (ตะวันตก): หลังคาจั่วทรงไทย · มุขหน้ายื่นตรงกลาง เปิดโล่งมีแต่เสา หลังคาจั่วสีน้ำเงิน · ระเบียงซุ้มโค้งชั้นบนสองข้างมุข
     parts: [
       { ends: ["gable", "gable"], pitch: 0.25, footprint: [[100.6151629,13.7685973],[100.6152035,13.7683555],[100.6156516,13.7684275],[100.615611,13.7686693]] },
@@ -51,10 +52,17 @@ window.SCHOOL_BUILDINGS = [
     id: "bodinpipat",
     name: "อาคารบดินทรพิพัฒน์",
     kind: "หอประชุม",
-    desc: "อาคารหอประชุมของโรงเรียน",
-    source: "เว็บไซต์โรงเรียน",
+    desc: "อาคารหอประชุมของโรงเรียน หน้าจั่วหันออกสนาม มีตราพระเกี้ยวบนหน้าจั่ว เสาหน้าอาคารเขียนคำขวัญ “ประพฤติดี” และ “มีความรู้”",
+    source: "เว็บไซต์โรงเรียน / ภาพจากคลิป YouTube",
     height: 15, floors: 1,
-    wall: "#f2f3f4", roof: "#b9bec5", roofType: "gable",
+    wall: "#f2f3f4", roof: "#3a4a6e", roofType: "gable",
+    // ด้านหน้า (ปลายเริ่ม = ทิศตะวันตก ฝั่งสนาม): ตราบนหน้าจั่ว หน้าต่างแนวตั้ง แถบชื่อ แถบกระจกเขียว
+    decor: [
+      { type: "panel", side: "start", image: "emblem-line", from: -2.6, to: 2.6, z0: 16.8, z1: 22.0, offset: 0.78 },
+      { type: "panel", side: "start", image: "vwindows", from: -11, to: 11, z0: 11.2, z1: 14.4, offset: 0.05 },
+      { type: "panel", side: "start", image: "nameband", text: "อาคารบดินทรพิพัฒน์", from: -11, to: 11, z0: 8.4, z1: 10.4, offset: 0.25 },
+      { type: "panel", side: "start", image: "greenglass", from: -11, to: 11, z0: 5.2, z1: 8.2, offset: 0.1 }
+    ],
     // หน้าจั่วหันไปทางสนาม (ทิศตะวันตก) ใต้หน้าจั่วเป็นโถงโล่งมีเสา
     parts: [
       { voids: [{ from: -1, to: 7, floors: 1 }], footprint: [[100.6151775,13.7682668],[100.6152277,13.7679878],[100.6156947,13.7680672],[100.6156444,13.7683461]] },
@@ -74,7 +82,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b1", name: "ตึก 1", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     // ด้านเหนือ (ฝั่งสนาม): จอ LED · แผงตราโรงเรียน · กันสาดทางเข้าพร้อมป้ายชื่อ · ฐานหินแกรนิตแดง
     decor: [
       { type: "plinth", side: "left", from: 34, to: 64, depth: 2.5, h: 1.0 },
@@ -90,7 +98,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b2", name: "ตึก 2", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], voids: [{ from: 75.9, to: 99.7, floors: 2 }], footprint: [[100.6147574,13.7674652],[100.6147789,13.7673503],[100.6157394,13.7675193],[100.615718,13.7676342]] }
     ]
@@ -99,7 +107,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b3", name: "ตึก 3", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], voids: [{ from: 75.1, to: 99.0, floors: 2 }], footprint: [[100.6148208,13.7671487],[100.6148407,13.7670335],[100.6157964,13.7671896],[100.6157765,13.7673047]] }
     ]
@@ -108,7 +116,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b4", name: "ตึก 4", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     parts: [
       { ends: ["hip", "gable"], footprint: [[100.6148746,13.7668175],[100.6148956,13.7667025],[100.6155031,13.7668069],[100.6154821,13.7669219]] }
     ]
@@ -117,7 +125,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b5", name: "ตึก 5", kind: "อาคารเรียน",
     desc: "รอข้อมูล — อาคารยาวแนวเหนือ–ใต้ฝั่งตะวันออก ตึก 1–3 ต่อเข้ากับอาคารนี้",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     parts: [
       { ends: ["hip", "hip"], footprint: [[100.6157282,13.7680084],[100.6156097,13.7679888],[100.6158333,13.7667116],[100.6159518,13.7667312]] }
     ]
@@ -125,7 +133,7 @@ window.SCHOOL_BUILDINGS = [
     id: "link", name: "อาคารเชื่อม", kind: "อาคารเรียน (แนวเหนือ–ใต้)",
     desc: "รอข้อมูล — อาคารแนวเหนือ–ใต้ที่เชื่อมตึก 1–4 ตรงกลาง วาดจากภาพดาวเทียม",
     source: "ภาพดาวเทียม Esri",
-    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#f1f2f4", accent: "#24409a", facade: "ribbon", sunshade: 0.9, sunshadeEdge: "#24409a", sunshadeEdge: "#24409a", roof: "#2f4373", roofType: "hip",
     parts: [
       { ends: ["gable", "gable"], footprint: [[100.6153977,13.7678356],[100.6152791,13.7678161],[100.6153308,13.7675211],[100.6154493,13.7675407]] },
       { ends: ["gable", "gable"], footprint: [[100.615454,13.7675141],[100.6153354,13.7674945],[100.6153877,13.7671956],[100.6155063,13.7672152]] },
@@ -149,7 +157,7 @@ window.SCHOOL_BUILDINGS = [
     id: "b7", name: "ตึก 7", kind: "อาคารเรียน",
     desc: "รอข้อมูล — ใส่คำอธิบาย เช่น กลุ่มสาระที่อยู่ในอาคาร ห้องสำคัญ ปีที่สร้าง",
     source: "OpenStreetMap",
-    height: null, floors: 4, wall: "#ece6d6", roof: "#3c4149", roofType: "hip",
+    height: null, floors: 4, wall: "#ece6d6", roof: "#2f4373", roofType: "hip",
     footprint: [[100.6151826,13.7662685],[100.6151922,13.7661945],[100.6151533,13.7661898],[100.6151693,13.7660658],[100.615219,13.7660719],[100.6152258,13.7660194],[100.6155335,13.766057],[100.6155263,13.7661127],[100.6155547,13.7661162],[100.615537,13.7662531],[100.6154934,13.7662478],[100.615486,13.7663055]]
   },
   {
@@ -167,19 +175,19 @@ window.SCHOOL_BUILDINGS = [
     footprint: [[100.6157339,13.7670567],[100.6157826,13.766825],[100.6154565,13.7667659],[100.6154126,13.7669999]]
   },
   {
-    id: "house", name: "อาคารอนุรักษ์", kind: "อาคารประวัติศาสตร์",
-    desc: "รอข้อมูล — OpenStreetMap ระบุเป็นบ้าน/อาคารเชิงประวัติศาสตร์ ยังไม่มีชื่อ",
-    source: "OpenStreetMap",
-    height: null, floors: 2, wall: "#efe3cc", roof: "#b4552f", roofType: "hip",
+    id: "house", name: "เรือนไทย", kind: "เรือนไทยไม้สัก (อาคารอนุรักษ์)",
+    desc: "เรือนไทยไม้สักยกใต้ถุน มีราวระเบียงไม้ฉลุลาย ซุ้มประตูทางขึ้น หลังคาทรงไทยมุงกระเบื้องดินเผา (จากภาพในคลิป)",
+    source: "OpenStreetMap / ภาพจากคลิป YouTube",
+    height: null, floors: 2, wall: "#5b3a22", facade: "teak", pitch: 1.3, roof: "#b4552f", roofType: "hip",
     footprint: [[100.6151091,13.7706349],[100.6152981,13.7706611],[100.615318,13.7706417],[100.6153481,13.7704364],[100.6151424,13.7704079]]
   },
   {
     id: "stand", name: "อัฒจันทร์", kind: "อัฒจันทร์สนามกีฬา",
-    desc: "อัฒจันทร์คอนกรีตแบบขั้นเปิดโล่ง ข้างลู่วิ่งของสนามกีฬา หันหน้าเข้าสนาม",
+    desc: "อัฒจันทร์คอนกรีตแบบขั้นเปิดโล่ง ข้างลู่วิ่งของสนามกีฬา หันหน้าเข้าสนาม ผนังหน้าและราวท่อสีเขียวน้ำทะเล ด้านหลังมีโครงรั้วเหล็ก",
     source: "OpenStreetMap / ภาพถ่าย",
     height: 3.4, floors: 1,
     // bleachers: ขั้นอัฒจันทร์ ไม่มีผนังและหลังคา · front = ฝั่งที่หันเข้าสนาม (ซ้ายของแนวใต้→เหนือ = ตะวันตก)
-    parts: [{ bleachers: { rows: 8, rise: 0.42, front: "left" }, footprint: [[100.6154384,13.7691143],[100.6154925,13.769096],[100.6155112,13.7696662],[100.6154621,13.769674]] }]
+    parts: [{ bleachers: { rows: 8, rise: 0.38, front: "left", frontWall: 1.0, rail: "#1fa39a", fence: 2.4 }, footprint: [[100.6154384,13.7691143],[100.6154925,13.769096],[100.6155112,13.7696662],[100.6154621,13.769674]] }]
   },
   {
     id: "pool", name: "สระว่ายน้ำ", kind: "สระว่ายน้ำ (มีหลังคาคลุม)",
@@ -203,4 +211,18 @@ window.SCHOOL_BUILDINGS = [
     model: false,
     center: [100.6150355, 13.7693944]
   }
+];
+
+// องค์ประกอบในบริเวณโรงเรียน (วาดจากภาพดาวเทียมและภาพในคลิป YouTube)
+// type: "court" (court: "basketball" | "badminton"), "pond", "plinth", "flagpole"
+window.SITE_FEATURES = [
+  { type: "court", court: "basketball", name: "สนามบาสเกตบอลหน้าตึก 1",
+    footprint: [[100.6146652,13.7680694],[100.6151372,13.7680955],[100.6151184,13.7684498],[100.6146437,13.768429]] },
+  { type: "plinth", name: "ฐานเสาธง", height: 0.8,
+    footprint: [[100.6147778,13.7680121],[100.6148851,13.76802],[100.6148797,13.7680955],[100.6147724,13.7680877]] },
+  { type: "flagpole", name: "เสาธง", at: [100.6148288,13.7680538], base: 0.8, height: 18 },
+  { type: "pond", name: "สระน้ำในลานกลาง (ตึก 1–2)",
+    footprint: [[100.6154403,13.7676162],[100.6156683,13.7676526],[100.6156468,13.7677673],[100.6154189,13.7677308]] },
+  { type: "court", court: "badminton", name: "สนามแบดมินตันในลานกลาง (ตึก 2–3)",
+    footprint: [[100.6150916,13.7672619],[100.6153518,13.7673061],[100.615325,13.7674442],[100.6150648,13.7673999]] }
 ];

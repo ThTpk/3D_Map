@@ -355,6 +355,46 @@ function signBoard(text) {
   g.fillText(text, 512, 50);
   return c;
 }
+// ภาพแผงตกแต่งตามชนิด (ภาพที่มีพื้นโปร่งใสตั้ง .transparent = true)
+const PANEL_COLORS = { emblem: "#1d2a6b", screen: "#15181d", nameband: "#9aa3ad", greenglass: "#2f7a55", vwindows: "#30353c" };
+const panelCache = {};
+function panelImage(d) {
+  const key = d.image + (d.text || "");
+  if (panelCache[key]) return panelCache[key];
+  let c;
+  if (d.image === "emblem") c = emblemPanel();
+  else if (d.image === "screen") c = screenPanel();
+  else {
+    c = document.createElement("canvas");
+    const g = c.getContext("2d");
+    if (d.image === "emblem-line") {                       // ตราพระเกี้ยวเส้นเทาเข้มบนหน้าจั่ว (พื้นโปร่งใส)
+      c.width = 256; c.height = 256; c.transparent = true;
+      g.strokeStyle = "#3b3f46"; g.fillStyle = "#3b3f46"; g.lineWidth = 7;
+      g.beginPath(); g.moveTo(128, 20); g.lineTo(168, 170); g.lineTo(88, 170); g.closePath(); g.stroke();
+      for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(104 + i * 4, 140 - i * 30); g.lineTo(152 - i * 4, 140 - i * 30); g.stroke(); }
+      g.beginPath(); g.ellipse(128, 196, 62, 20, 0, 0, Math.PI * 2); g.stroke();
+      g.fillRect(90, 226, 76, 8);
+    } else if (d.image === "nameband") {                   // แถบป้ายชื่ออาคารสีเทาเงิน
+      c.width = 1024; c.height = 96;
+      g.fillStyle = "#a9b1ba"; g.fillRect(0, 0, 1024, 96);
+      g.fillStyle = "rgba(255,255,255,0.18)"; for (let x = 0; x < 1024; x += 64) g.fillRect(x, 0, 2, 96);
+      g.fillStyle = "#4b5059"; g.font = "600 56px 'Noto Sans Thai', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(d.text || "", 512, 52);
+    } else if (d.image === "greenglass") {                 // แถบหน้าต่างกระจกสีเขียว
+      c.width = 512; c.height = 128;
+      g.fillStyle = "#2e7d57"; g.fillRect(0, 0, 512, 128);
+      g.fillStyle = "rgba(255,255,255,0.15)"; g.fillRect(0, 10, 512, 18);
+      g.fillStyle = "#e9ecef"; for (let x = 0; x <= 512; x += 64) g.fillRect(x - 3, 0, 6, 128);
+      g.fillRect(0, 60, 512, 5); g.fillRect(0, 0, 512, 5); g.fillRect(0, 123, 512, 5);
+    } else if (d.image === "vwindows") {                   // หน้าต่างช่องแนวตั้งบนหน้าจั่ว (พื้นโปร่งใส)
+      c.width = 512; c.height = 128; c.transparent = true;
+      g.fillStyle = "#30353c";
+      for (let x = 12; x < 512; x += 40) g.fillRect(x, 6, 16, 116);
+    }
+  }
+  panelCache[key] = c;
+  return c;
+}
 function screenPanel() {
   const c = document.createElement("canvas");
   c.width = 128; c.height = 96;
@@ -371,10 +411,16 @@ function decorParts(part, list) {
   const ax = partAxis(part), wallS = ax.half + WALL_PAD;
   const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
   return (list || []).map((d) => {
+    if (d.side === "start" || d.side === "end") {
+      // ผนังหัว/ท้ายปีก: from/to = ระยะข้ามความกว้าง (0 = กึ่งกลาง) · เรียงจุดไปทางขวาของผู้มองจากด้านนอก
+      const st = d.side === "start", tw = st ? -WALL_PAD : ax.L + WALL_PAD, dir = st ? -1 : 1;
+      const lo = Math.min(d.from, d.to), hi = Math.max(d.from, d.to);
+      return { d, line: (k) => st ? [at(tw + dir * k, hi), at(tw + dir * k, lo)] : [at(tw + dir * k, lo), at(tw + dir * k, hi)] };
+    }
     const sg = d.side === "right" ? -1 : 1;
     const S = (k) => sg * (wallS + k);                   // k = ระยะออกจากผนัง
     const box = (k0, k1, t0, t1) => [at(t0, S(k0)), at(t1, S(k0)), at(t1, S(k1)), at(t0, S(k1))];
-    const out = { d, line: (k) => [at(d.from, S(k)), at(d.to, S(k))] };
+    const out = { d, line: (k) => sg > 0 ? [at(d.to, S(k)), at(d.from, S(k))] : [at(d.from, S(k)), at(d.to, S(k))] };
     if (d.type === "canopy") {
       out.roof = box(0, d.depth, d.from, d.to);
       out.cols = [];
@@ -396,11 +442,12 @@ function bleacherParts(part) {
   const cfg = part.bleachers, rows = cfg.rows || 8, rise = cfg.rise || 0.42;
   const sign = cfg.front === "right" ? -1 : 1;           // left = ฝั่งซ้ายของแนวปลายเริ่ม→ปลายสุด
   const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
-  const depth = (2 * half) / rows, H = rows * rise;
+  const fw = cfg.frontWall || 0;                          // ผนังหน้าอัฒจันทร์ (ม.)
+  const depth = (2 * half) / rows, H = fw + rows * rise;
   const sAt = (i) => sign * (half - i * depth);           // ระยะจากแนวกลางของขอบหน้าแถวที่ i
   const steps = [];
   for (let i = 0; i < rows; i++) {
-    steps.push({ h: (i + 1) * rise, pts: [at(0, sAt(i)), at(ax.L, sAt(i)), at(ax.L, sAt(i + 1)), at(0, sAt(i + 1))] });
+    steps.push({ h: fw + (i + 1) * rise, pts: [at(0, sAt(i)), at(ax.L, sAt(i)), at(ax.L, sAt(i + 1)), at(0, sAt(i + 1))] });
   }
   const dividers = [];
   const nDiv = Math.max(2, Math.round(ax.L / 10) + 1);
@@ -408,7 +455,7 @@ function bleacherParts(part) {
     const t = ax.L * k / (nDiv - 1);
     dividers.push({ a: at(t, sAt(0)), c: at(t, sAt(rows)), h0: rise + 0.8, h1: H + 0.9 });
   }
-  return { steps, dividers, back: { a: at(0, sAt(rows)), c: at(ax.L, sAt(rows)), h: H }, H };
+  return { steps, dividers, back: { a: at(0, sAt(rows)), c: at(ax.L, sAt(rows)), h: H }, front: { a: at(0, sAt(0)), c: at(ax.L, sAt(0)), h: fw + rise }, H, cfg };
 }
 
 // บันไดภายนอก: b.stairs = [{ from: [lon,lat] เชิงบันได, to: [lon,lat] หัวบันได, width, height, base }]
@@ -434,6 +481,77 @@ function stairParts(st) {
     z0, z1, steps
   };
 }
+// พื้นสนาม: บาสเกตบอล (เขียว เส้นขาว ช่องโทษส้ม) และแบดมินตัน (ฟ้า เส้นขาว)
+const courtCache = {};
+function courtImage(kind) {
+  if (courtCache[kind]) return courtCache[kind];
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 512;
+  const g = c.getContext("2d");
+  g.lineWidth = 4; g.strokeStyle = "#f2f4f5";
+  if (kind === "badminton") {
+    g.fillStyle = "#4f86b8"; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 3; i++) {
+      const x = 24 + i * 164;
+      g.fillStyle = "#3f73a8"; g.fillRect(x, 40, 136, 432);
+      g.strokeRect(x, 40, 136, 432); g.beginPath(); g.moveTo(x, 256); g.lineTo(x + 136, 256); g.moveTo(x + 68, 40); g.lineTo(x + 68, 200); g.moveTo(x + 68, 312); g.lineTo(x + 68, 472);
+      g.moveTo(x, 200); g.lineTo(x + 136, 200); g.moveTo(x, 312); g.lineTo(x + 136, 312); g.stroke();
+    }
+  } else {
+    g.fillStyle = "#3f8a5c"; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 3; i++) {                      // สนาม 3 สนามเรียงกัน ตามภาพดาวเทียม
+      const x = 14 + i * 166, w = 150;
+      g.fillStyle = "#4b9a69"; g.fillRect(x, 24, w, 464);
+      g.fillStyle = "#d9934a"; g.fillRect(x + w / 2 - 24, 24, 48, 80); g.fillRect(x + w / 2 - 24, 408, 48, 80);
+      g.strokeRect(x, 24, w, 464);
+      g.beginPath(); g.moveTo(x, 256); g.lineTo(x + w, 256); g.stroke();
+      g.beginPath(); g.arc(x + w / 2, 256, 24, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(x + w / 2, 24, 64, 0, Math.PI); g.stroke();
+      g.beginPath(); g.arc(x + w / 2, 488, 64, Math.PI, 0); g.stroke();
+    }
+  }
+  courtCache[kind] = c;
+  return c;
+}
+let flagCanvas = null;
+function thaiFlag() {
+  if (flagCanvas) return flagCanvas;
+  const c = document.createElement("canvas");
+  c.width = 120; c.height = 72;
+  const g = c.getContext("2d");
+  [["#a51931", 0, 12], ["#f4f5f8", 12, 12], ["#2d2a4a", 24, 24], ["#f4f5f8", 48, 12], ["#a51931", 60, 12]].forEach(([col, y, h]) => { g.fillStyle = col; g.fillRect(0, y, 120, h); });
+  flagCanvas = c;
+  return c;
+}
+
+// ราวท่อเหล็กสองชั้น (โปร่ง) และโครงรั้วเหล็กสูง สำหรับอัฒจันทร์
+const railCache = {};
+function railing(color) {
+  if (railCache[color]) return railCache[color];
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = color;
+  g.fillRect(0, 2, 128, 7); g.fillRect(0, 30, 128, 5);
+  g.fillRect(2, 2, 6, 62);
+  railCache[color] = c;
+  return c;
+}
+let fenceCanvas = null;
+function fenceFrame() {
+  if (fenceCanvas) return fenceCanvas;
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#b9bec4";
+  g.fillRect(0, 0, 128, 4); g.fillRect(0, 62, 128, 3); g.fillRect(0, 124, 128, 4);
+  g.fillRect(0, 0, 4, 128);
+  g.fillStyle = "rgba(185,190,196,0.35)";
+  for (let x = 8; x < 128; x += 8) g.fillRect(x, 0, 1, 128);   // ตาข่าย
+  fenceCanvas = c;
+  return c;
+}
+
 // ลูกกรงราวบันได (โปร่ง) ใช้กับผนังราว
 let balusterCanvas = null;
 function balusters() {
@@ -535,7 +653,14 @@ function facade(wall, type, accent) {
   g.fillStyle = wall;
   g.fillRect(0, 0, 128, 128);
 
-  if (type === "plain") {
+  if (type === "teak") {
+    // ผนังไม้สักแบบเรือนไทย: ไม้กระดานแนวตั้ง หน้าต่างบานไม้ คิ้วไม้แกะสลัก
+    g.fillStyle = "#5b3a22"; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = "rgba(0,0,0,0.25)"; for (let x = 0; x < 128; x += 9) g.fillRect(x, 0, 2, 128);
+    g.fillStyle = "#3f2615"; g.fillRect(34, 34, 60, 64);
+    g.fillStyle = "#6e4a2e"; g.fillRect(36, 36, 27, 60); g.fillRect(65, 36, 27, 60);
+    g.fillStyle = "#c9a45a"; g.fillRect(28, 26, 72, 5); g.fillRect(0, 118, 128, 4);
+  } else if (type === "plain") {
     g.fillStyle = shade(wall, -0.06);
     g.fillRect(0, 0, 128, 4);
   } else if (type === "hall") {
@@ -656,7 +781,7 @@ function hipRoof(b, top) {
     ? 0.47 * Math.min(len(outer[0], outer[1]), len(outer[1], outer[2]))
     : 4.5);
   const inner = offsetPolygon(outer, -inset);
-  const zr = top + inset * 0.6;                                // ความชันประมาณ 30°
+  const zr = top + inset * (b.pitch ?? 0.6);                   // pitch = ความชัน (ค่าเริ่มต้นประมาณ 30°)
   const roof = b.roof || "#8a857c";
   const ccw = outer;                                           // offsetPolygon คืนค่าแบบทวนเข็มเสมอ
   const faces = ccw.map((q, i) => {
@@ -732,6 +857,22 @@ function buildGlb() {
     if (b.model === false) return;
     b.parts.forEach((part) => poly(base, material("cement", GROUND_COLOR), offsetPolygon(part.xy, WALL_PAD + 0.5).map(([x, y]) => [x, y, 0])));
   });
+  (window.SITE_FEATURES || []).forEach((sf) => {
+    const xy = (sf.footprint || []).map(toXY);
+    if (sf.type === "court") poly(base, material("court-" + sf.court, sf.court === "badminton" ? "#4f86b8" : "#3f8a5c"), xy.map(([x, y]) => [x, y, 0.04]));
+    if (sf.type === "pond") poly(base, material("water", "#5f8f86"), xy.map(([x, y]) => [x, y, 0.02]));
+    if (sf.type === "plinth") {
+      const h = sf.height || 0.6;
+      poly(base, material("plinth-site", sf.color || "#c9ccd0"), xy.map(([x, y]) => [x, y, h]));
+      xy.forEach((q, i) => quad(base, material("plinth-site", sf.color || "#c9ccd0"), q, xy[(i + 1) % xy.length], 0, h));
+    }
+    if (sf.type === "flagpole") {
+      const p0 = toXY(sf.at), h = sf.height || 18, z0 = sf.base || 0, r = 0.12;
+      const sq = [[p0[0] - r, p0[1] - r], [p0[0] + r, p0[1] - r], [p0[0] + r, p0[1] + r], [p0[0] - r, p0[1] + r]];
+      sq.forEach((q, i) => quad(base, material("flagpole", "#eef0f2"), q, sq[(i + 1) % 4], z0, z0 + h));
+      quad(base, material("flag", "#2d2a4a"), [p0[0] + 0.15, p0[1]], [p0[0] + 3, p0[1]], z0 + h - 2, z0 + h - 0.1);
+    }
+  });
   addMesh("พื้นโรงเรียน", base);
 
   const glass = material("glass", "#2c3c4d", 0.3, 0.15);
@@ -753,7 +894,9 @@ function buildGlb() {
           st.pts.forEach((q, i) => quad(prims, stepM, q, st.pts[(i + 1) % 4], 0, st.h));
         });
         bl.dividers.forEach((d) => poly(prims, colM, [[...d.a, 0], [...d.c, 0], [...d.c, d.h1], [...d.a, d.h0]]));
-        quad(prims, colM, bl.back.a, bl.back.c, bl.H + 0.95, bl.H + 1.1);
+        const railM = material("rail-" + b.id, bl.cfg.rail || "#f4f5f7");
+        quad(prims, railM, bl.back.a, bl.back.c, bl.H + 0.95, bl.H + 1.1);
+        quad(prims, railM, bl.front.a, bl.front.c, bl.front.h + 0.9, bl.front.h + 1.0);
         continue;
       }
       const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
@@ -847,7 +990,7 @@ function buildGlb() {
         poly(prims, m, pts.map(([x, y]) => [x, y, z1]));
         pts.forEach((q, i) => quad(prims, m, q, pts[(i + 1) % pts.length], z0, z1));
       };
-      if (d.type === "panel") { const [a, c] = dp.line(d.offset ?? 0.4); quad(prims, material(d.image === "emblem" ? "emblem" : "screen", d.image === "emblem" ? "#1d2a6b" : "#15181d"), a, c, d.z0, d.z1); }
+      if (d.type === "panel" && PANEL_COLORS[d.image]) { const [a, c] = dp.line(d.offset ?? 0.4); quad(prims, material("panel-" + d.image, PANEL_COLORS[d.image]), a, c, d.z0, d.z1); }
       if (d.type === "canopy") {
         box(dp.roof, d.z1 - 0.3, d.z1, material("canopy", "#5b2c22"));
         const [a, c] = dp.line(d.depth + 0.02); quad(prims, material("sign", "#7a3b2c"), a, c, d.z0, d.z1);
@@ -1031,6 +1174,53 @@ function start() {
   const modelEntities = [];
   // พื้นปูนซีเมนต์เฉพาะใต้โมเดล 3D (ส่วนอื่นยังเป็นภาพดาวเทียม) ปิดได้ด้วยปุ่ม "พื้นปูน"
   const cementPads = [];
+  // สนามกีฬา สระน้ำ ฐานและเสาธง (window.SITE_FEATURES ใน buildings.js)
+  const siteEntities = [];
+  (window.SITE_FEATURES || []).forEach((sf, i) => {
+    const xy = (sf.footprint || []).map(toXY);
+    const hier = () => Cesium.Cartesian3.fromDegreesArray(xy.map(toLL).flat());
+    const id = "site-" + i;
+    if (sf.type === "court" || sf.type === "pond") {
+      siteEntities.push(viewer.entities.add({
+        id,
+        polygon: {
+          hierarchy: hier(), height: ground + (sf.type === "pond" ? 0.02 : 0.06),
+          stRotation: Cesium.Math.toRadians(sf.rotation || 0),
+          material: sf.type === "pond"
+            ? Cesium.Color.fromCssColorString("#5f8f86").withAlpha(0.92)
+            : new Cesium.ImageMaterialProperty({ image: courtImage(sf.court) })
+        }
+      }));
+      if (sf.type === "pond") {
+        const c = centroid(xy);
+        siteEntities.push(viewer.entities.add({          // รูปปั้นกลางสระ
+          id: id + "-s",
+          position: Cesium.Cartesian3.fromDegrees(...toLL(c), ground + 1.0),
+          cylinder: { length: 2.0, topRadius: 0.35, bottomRadius: 0.6, material: Cesium.Color.fromCssColorString("#4a4135") }
+        }));
+      }
+    }
+    if (sf.type === "plinth") siteEntities.push(viewer.entities.add({
+      id, polygon: { hierarchy: hier(), height: ground, extrudedHeight: ground + (sf.height || 0.6), material: Cesium.Color.fromCssColorString(sf.color || "#c9ccd0") }
+    }));
+    if (sf.type === "flagpole") {
+      const h = sf.height || 18, p0 = toXY(sf.at), base = ground + (sf.base || 0);
+      siteEntities.push(viewer.entities.add({
+        id, position: Cesium.Cartesian3.fromDegrees(...toLL(p0), base + h / 2),
+        cylinder: { length: h, topRadius: 0.08, bottomRadius: 0.16, material: Cesium.Color.fromCssColorString("#eef0f2") }
+      }));
+      const f1 = [p0[0] + 0.15, p0[1]], f2 = [p0[0] + 3.0, p0[1]];
+      siteEntities.push(viewer.entities.add({            // ธงชาติ
+        id: id + "-f",
+        wall: {
+          positions: Cesium.Cartesian3.fromDegreesArray([...toLL(f1), ...toLL(f2)]),
+          minimumHeights: [base + h - 2.0, base + h - 2.0], maximumHeights: [base + h - 0.1, base + h - 0.1],
+          material: new Cesium.ImageMaterialProperty({ image: thaiFlag() })
+        }
+      }));
+    }
+  });
+  modelEntities.push(...siteEntities);
   BUILDINGS.forEach((b) => {
     if (b.model === false) return;
     b.parts.forEach((part, pi) => cementPads.push(viewer.entities.add({
@@ -1073,15 +1263,19 @@ function start() {
             material: Cesium.Color.fromCssColorString("#e6e8eb")
           }
         })));
-        modelEntities.push(viewer.entities.add({
-          id: id + "-h0",
+        const L = partAxis(part).L;
+        const railWall = (seg, z0, z1, img, rep, suffix) => modelEntities.push(viewer.entities.add({
+          id: id + suffix,
           wall: {
-            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(bl.back.a), ...toLL(bl.back.c)]),
-            minimumHeights: [ground + bl.H, ground + bl.H], maximumHeights: [ground + bl.H + 1.1, ground + bl.H + 1.1],
-            material: new Cesium.ImageMaterialProperty({ image: balusters(), transparent: true,
-              repeat: new Cesium.Cartesian2(Math.max(1, Math.round(partAxis(part).L / 1.2)), 1) })
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(seg.a), ...toLL(seg.c)]),
+            minimumHeights: [ground + z0, ground + z0], maximumHeights: [ground + z1, ground + z1],
+            material: new Cesium.ImageMaterialProperty({ image: img, transparent: true, repeat: new Cesium.Cartesian2(rep, 1) })
           }
         }));
+        const railColor = bl.cfg.rail || "#f4f5f7";
+        railWall(bl.back, bl.H, bl.H + 1.1, railing(railColor), Math.max(1, Math.round(L / 2.4)), "-h0");   // ราวแถวบนสุด
+        railWall(bl.front, bl.front.h, bl.front.h + 1.0, railing(railColor), Math.max(1, Math.round(L / 2.4)), "-h1");   // ราวด้านหน้า
+        if (bl.cfg.fence) railWall(bl.back, bl.H, bl.H + bl.cfg.fence, fenceFrame(), Math.max(1, Math.round(L / 3)), "-h2");   // โครงรั้วเหล็กด้านหลัง
         return;
       }
       const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
@@ -1222,13 +1416,20 @@ function start() {
             material: Cesium.Color.fromCssColorString("#f3f4f6")
           }
         }));
+        if (b.sunshadeEdge) modelEntities.push(viewer.entities.add({     // ขอบกันสาดสีน้ำเงินตามภาพถ่าย
+          id: "wall-" + b.id + "-" + pi + "-g" + f,
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArrayHeights(outer.concat([outer[0]]).flatMap((q) => [...toLL(q), z - 0.12])),
+            width: 2.5, arcType: Cesium.ArcType.NONE,
+            material: Cesium.Color.fromCssColorString(b.sunshadeEdge)
+          }
+        }));
       }
     });
     if (b.model !== false && b.decor) decorParts(b.parts[0], b.decor).forEach((dp, di) => {
       const d = dp.d, id = "wall-" + b.id + "-x" + di;
       const flatWall = (k, z0, z1, material, suffix) => {
-        // เรียงจุดให้ภาพบนผนังอ่านได้ถูกด้านเมื่อมองจากด้านนอกอาคาร
-        const [p0, p1] = dp.line(k), [a, c] = d.side === "right" ? [p0, p1] : [p1, p0];
+        const [a, c] = dp.line(k);                     // decorParts เรียงจุดให้อ่านถูกด้านจากภายนอกแล้ว
         modelEntities.push(viewer.entities.add({
           id: id + suffix,
           wall: { positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
@@ -1241,8 +1442,8 @@ function start() {
           height: ground + z0, extrudedHeight: ground + z1, material: Cesium.Color.fromCssColorString(color) }
       }));
       if (d.type === "panel") {
-        const img = d.image === "emblem" ? emblemPanel() : screenPanel();
-        flatWall(d.offset ?? 0.4, d.z0, d.z1, new Cesium.ImageMaterialProperty({ image: img }), "-0");
+        const img = panelImage(d);
+        flatWall(d.offset ?? 0.4, d.z0, d.z1, new Cesium.ImageMaterialProperty({ image: img, transparent: !!img.transparent }), "-0");
       }
       if (d.type === "canopy") {
         solid(dp.roof, d.z1 - 0.3, d.z1, "#5b2c22", "-r");
