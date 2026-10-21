@@ -3,10 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bangkok 3D Map</title>
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<title>Bodindecha 3D</title>
+<link href="https://cdn.jsdelivr.net/npm/cesium@1.122.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.CESIUM_BASE_URL = "https://cdn.jsdelivr.net/npm/cesium@1.122.0/Build/Cesium/";</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.122.0/Build/Cesium/Cesium.js"></script>
+<script src="buildings.js"></script>
 <style>
   :root {
     --panel-bg: rgba(255, 255, 255, 0.94);
@@ -34,72 +36,81 @@
   html, body { margin: 0; height: 100%; background: #0e1117; font-family: "Noto Sans Thai", system-ui, sans-serif; }
   #map { position: absolute; inset: 0; }
 
-  .panel {
-    position: absolute; top: 16px; left: 16px; z-index: 2;
-    width: 320px; max-width: calc(100vw - 32px);
+  .panel, .info {
+    position: absolute; z-index: 2;
     background: var(--panel-bg); color: var(--text);
     border: 1px solid var(--border); border-radius: 14px;
     box-shadow: var(--shadow); backdrop-filter: blur(8px);
     padding: 14px 16px;
   }
+  .panel {
+    top: 16px; left: 16px;
+    width: 320px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
+  }
   .panel h1 { font-size: 18px; margin: 0 0 2px; font-weight: 600; }
   .panel .sub { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
-  .panel h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .panel h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; letter-spacing: .04em; }
+  .panel p, .panel li { font-size: 13px; line-height: 1.5; }
+  .panel ul { margin: 0; padding-left: 18px; }
+  .panel a { color: var(--accent); }
   .toggle-btn {
     display: none; position: absolute; top: 12px; right: 12px;
     border: none; background: none; color: var(--muted); font-size: 18px; cursor: pointer;
   }
-
-  .search { display: flex; gap: 6px; position: relative; }
-  .search input {
-    flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 14px;
-    border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text);
-  }
-  .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .results {
-    position: absolute; top: 40px; left: 0; right: 0; z-index: 3;
-    background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
-    box-shadow: var(--shadow); max-height: 240px; overflow-y: auto; display: none;
-  }
-  .results div { padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
-  .results div:last-child { border-bottom: none; }
-  .results div:hover { background: var(--chip-hover); }
+  .status { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
     border: 1px solid var(--border); background: var(--chip-bg); color: var(--text);
-    font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+    border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
   }
   .chip:hover { background: var(--chip-hover); }
-  .feature-link {
-    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--chip-bg);
-    color: var(--text); text-decoration: none;
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .info { top: 16px; right: 16px; width: 300px; max-width: calc(100vw - 32px); }
+  .info .kind {
+    display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent);
+    background: var(--chip-bg); border-radius: 999px; padding: 2px 9px; margin-bottom: 6px;
   }
-  .feature-link:hover { background: var(--chip-hover); border-color: var(--accent); }
-  .feature-icon { font-size: 22px; line-height: 1; }
-  .feature-link b { display: block; font-size: 13px; font-weight: 600; }
-  .feature-link small { display: block; font-size: 11px; color: var(--muted); }
-  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-  .row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
-  .row input[type=range] { flex: 1; accent-color: var(--accent); }
-  .row label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
-
-  .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; padding-left: 16px; }
-
-  .status {
-    position: absolute; bottom: 30px; left: 16px; z-index: 2;
-    background: var(--panel-bg); color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 4px 10px; font-size: 12px; font-variant-numeric: tabular-nums;
+  .info h3 { font-size: 17px; margin: 0 0 6px; font-weight: 600; padding-right: 24px; }
+  .info .desc { font-size: 14px; line-height: 1.6; margin: 0 0 10px; }
+  .info .desc.pending { color: var(--muted); font-style: italic; }
+  .info .stats { display: flex; gap: 8px; margin-bottom: 8px; }
+  .info .stat { flex: 1; background: var(--chip-bg); border-radius: 10px; padding: 6px 10px; }
+  .info .stat b { display: block; font-size: 18px; font-weight: 600; }
+  .info .stat span { font-size: 11px; color: var(--muted); }
+  .info .src { font-size: 11px; color: var(--muted); margin: 0; }
+  .info .close {
+    position: absolute; top: 10px; right: 10px; border: none; background: none;
+    color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
   }
 
+  .hidden { display: none !important; }
+
+  .walkpad {
+    position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 3;
+    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 8px;
+    padding: 12px; border-radius: 18px;
+    background: var(--panel-bg); border: 1px solid var(--border); box-shadow: var(--shadow);
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .walkpad button {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--chip-bg); color: var(--text);
+    font-size: 22px; cursor: pointer; touch-action: none;
+  }
+  .walkpad button:active, .walkpad button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .walkpad .exit { font-size: 13px; font-family: inherit; }
+  .walkhint {
+    position: absolute; left: 50%; bottom: 196px; transform: translateX(-50%); z-index: 3;
+    font-size: 12px; color: var(--text); background: var(--panel-bg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 12px; white-space: nowrap;
+  }
   @media (max-width: 600px) {
-    .panel { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; padding: 12px; }
+    .panel { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; max-height: 45vh; }
     .toggle-btn { display: block; }
     .panel.collapsed .body { display: none; }
-    .panel.collapsed .sub { margin-bottom: 0; }
-    .status { display: none; }
+    .walkhint { white-space: normal; text-align: center; width: calc(100% - 32px); border-radius: 12px; }
+    .info { top: auto; bottom: 34px; left: 8px; right: 8px; width: auto; max-width: none; max-height: 45vh; overflow-y: auto; }
   }
 </style>
 </head>
@@ -108,289 +119,1450 @@
 
 <div class="panel" id="panel">
   <button class="toggle-btn" id="toggle" aria-label="ย่อ/ขยาย">▾</button>
-  <h1>กรุงเทพมหานคร 3D</h1>
-  <p class="sub">แผนที่สามมิติ · อาคารแสดงตามความสูงจริง</p>
+  <h1>โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี)</h1>
+  <p class="sub">โมเดลอาคาร 3 มิติ · ภาพดาวเทียม Esri</p>
 
   <div class="body">
-    <div class="search">
-      <input id="q" type="search" placeholder="ค้นหาสถานที่ในกรุงเทพฯ…" autocomplete="off">
-      <div class="results" id="results"></div>
+
+    <div id="controls" class="hidden">
+      <h2>อาคาร</h2>
+      <div class="chips" id="buildings"></div>
+
+      <h2>การแสดงผล</h2>
+      <div class="chips">
+        <button class="chip on" id="models">โมเดลอาคาร</button>
+        <button class="chip on" id="cement">พื้นปูน</button>
+        <button class="chip" id="clip">เฉพาะโรงเรียน</button>
+        <button class="chip on" id="labels">ป้ายชื่อ</button>
+      </div>
+
+      <h2>มุมมอง</h2>
+      <div class="chips">
+        <button class="chip" id="home">ภาพรวม</button>
+        <button class="chip" id="top">มุมบน</button>
+        <button class="chip" id="spin">หมุนรอบ</button>
+        <button class="chip" id="walk">🚶 เดินในโรงเรียน</button>
+        <button class="chip" id="snap">📷 บันทึกภาพ</button>
+        <button class="chip" id="glb">⬇ โมเดล .glb</button>
+      </div>
+      <p class="status" id="status"></p>
+
+      <h2>วิธีใช้</h2>
+      <ul>
+        <li>คลิกอาคารเพื่อดูรายละเอียด</li>
+        <li>ลากเมาส์ซ้าย = หมุนรอบ · ล้อเมาส์ = ซูม</li>
+        <li>Ctrl+ลาก หรือลากปุ่มกลาง = เอียงกล้อง</li>
+        <li>มือถือใช้ 1–2 นิ้ว</li>
+      </ul>
     </div>
-
-    <h2>สถานที่สำคัญ</h2>
-    <div class="chips" id="places"></div>
-
-    <h2>แผนที่ละเอียด</h2>
-    <a class="feature-link" href="bodindecha.html">
-      <span class="feature-icon">🏫</span>
-      <span><b>โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี)</b><small>โมเดลอาคาร 3D · ข้อมูลอาคาร · ส่งออก .glb</small></span>
-    </a>
-
-    <h2>รูปแบบแผนที่</h2>
-    <div class="chips" id="styles"></div>
-
-    <h2>มุมมอง</h2>
-    <div class="row">
-      <span>เอียง</span>
-      <input type="range" id="pitch" min="0" max="85" value="60">
-      <span id="pitchVal" style="width:28px;text-align:right">60°</span>
-    </div>
-    <div class="row">
-      <label><input type="checkbox" id="spin"> หมุนรอบอัตโนมัติ</label>
-      <label style="margin-left:auto"><input type="checkbox" id="b3d" checked> อาคาร 3D</label>
-    </div>
-
-    <h2>วิธีใช้</h2>
-    <ul class="hint">
-      <li>ลากเมาส์ซ้าย = เลื่อนแผนที่</li>
-      <li>ลากเมาส์ขวา / Ctrl+ลาก = หมุนและเอียง</li>
-      <li>ล้อเมาส์ = ซูม · มือถือ: ใช้ 2 นิ้วหมุน/เอียง</li>
-    </ul>
   </div>
 </div>
 
-<div class="status" id="status"></div>
+<div class="walkhint hidden" id="walkhint">W/↑ เดินหน้า · S/↓ ถอยหลัง · A/D เลี้ยว · Shift = เร็วขึ้น · ลากเมาส์ = มองรอบ</div>
+<div class="walkpad hidden" id="walkpad">
+  <button class="exit" id="walkExit" title="ออกจากโหมดเดิน">ออก</button>
+  <button data-move="fwd" title="เดินหน้า" aria-label="เดินหน้า">▲</button>
+  <span></span>
+  <button data-move="left" title="เลี้ยวซ้าย" aria-label="เลี้ยวซ้าย">⟲</button>
+  <button data-move="back" title="ถอยหลัง" aria-label="ถอยหลัง">▼</button>
+  <button data-move="right" title="เลี้ยวขวา" aria-label="เลี้ยวขวา">⟳</button>
+</div>
+
+<div class="info hidden" id="info">
+  <button class="close" id="infoClose" aria-label="ปิด">×</button>
+  <span class="kind" id="infoKind"></span>
+  <h3 id="infoName"></h3>
+  <p class="desc" id="infoDesc"></p>
+  <div class="stats" id="infoStats">
+    <div class="stat"><b id="infoHeight"></b><span>ความสูงโดยประมาณ</span></div>
+    <div class="stat"><b id="infoFloors"></b><span>จำนวนชั้น</span></div>
+  </div>
+  <p class="src" id="infoSrc"></p>
+</div>
 
 <script>
-const OFM = 'https://tiles.openfreemap.org';
-
-const PLACES = [
-  { name: 'พระบรมมหาราชวัง', lng: 100.4913, lat: 13.7500, zoom: 16.5, bearing: -20 },
-  { name: 'วัดอรุณฯ',        lng: 100.4889, lat: 13.7437, zoom: 16.8, bearing: 60 },
-  { name: 'สยาม',            lng: 100.5340, lat: 13.7457, zoom: 16.2, bearing: -30 },
-  { name: 'สีลม / สาทร',      lng: 100.5280, lat: 13.7240, zoom: 15.8, bearing: 30 },
-  { name: 'มหานคร',          lng: 100.5283, lat: 13.7234, zoom: 17,   bearing: -45 },
-  { name: 'ไอคอนสยาม',        lng: 100.5104, lat: 13.7266, zoom: 16.3, bearing: 100 },
-  { name: 'อนุสาวรีย์ชัยฯ',    lng: 100.5386, lat: 13.7649, zoom: 16.5, bearing: 0 },
-  { name: 'จตุจักร',          lng: 100.5500, lat: 13.7999, zoom: 15.8, bearing: 20 },
-  { name: 'สุวรรณภูมิ',        lng: 100.7501, lat: 13.6900, zoom: 14,   bearing: -60 },
+// ขอบเขตโรงเรียนจาก OpenStreetMap (way 562122686) [lon, lat]
+const SCHOOL_OUTLINE = [
+  [100.614307, 13.769502], [100.614794, 13.770541], [100.614856, 13.770548], [100.614907, 13.770554],
+  [100.614973, 13.770684], [100.615266, 13.771267], [100.615469, 13.770059], [100.616085, 13.766140],
+  [100.614933, 13.765945], [100.614928, 13.765973], [100.614873, 13.766287], [100.614811, 13.766639],
+  [100.614610, 13.767777], [100.614593, 13.767879]
 ];
+const CENTER = { lon: 100.61515, lat: 13.76860 };
+const FLOOR_H = 3.6;          // ความสูงต่อชั้นโดยประมาณ (ม.)
+const WALL_PAD = 0.8;         // ขยายรอบอาคารให้คลุมอาคารในภาพถ่าย (ม.)
+const ESRI_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const GROUND_COLOR = "#b4b3ad";   // พื้นปูนซีเมนต์
+const ESRI_CREDIT = "Imagery © Esri, Maxar, Earthstar Geographics";
+const BUILDINGS = window.SCHOOL_BUILDINGS || [];
 
-const STYLES = {
-  'สีสัน':     `${OFM}/styles/liberty`,
-  'เรียบ':     `${OFM}/styles/positron`,
-  'ดาวเทียม':  {
-    version: 8,
-    glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
-    sources: {
-      satellite: {
-        type: 'raster', tileSize: 256, maxzoom: 19,
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
-      },
-      openmaptiles: { type: 'vector', url: `${OFM}/planet` },
-    },
-    layers: [
-      { id: 'satellite', type: 'raster', source: 'satellite' },
-      {
-        id: 'place-labels', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place',
-        layout: { 'text-field': ['coalesce', ['get', 'name:th'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': 13 },
-        paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,.75)', 'text-halo-width': 1.5 },
-      },
-    ],
-  },
-};
+const $ = (id) => document.getElementById(id);
+const deg = (d) => Cesium.Math.toRadians(d);
 
-const map = new maplibregl.Map({
-  container: 'map',
-  style: STYLES['สีสัน'],
-  center: [100.5235, 13.7350],
-  zoom: 14.6,
-  pitch: 60,
-  bearing: -20,
-  maxPitch: 85,
-  antialias: true,
-  hash: true,
-});
+function setStatus(msg) { $("status").textContent = msg || ""; }
 
-// Keep the canvas sized to its container (e.g. when opened in a hidden tab/iframe)
-new ResizeObserver(() => map.resize()).observe(document.getElementById('map'));
+// ---------- เรขาคณิตในระนาบเมตรรอบจุดกลางโรงเรียน ----------
+const M_LAT = 110574;
+const M_LON = 111320 * Math.cos(deg(CENTER.lat));
+const toXY = ([lon, lat]) => [(lon - CENTER.lon) * M_LON, (lat - CENTER.lat) * M_LAT];
+const toLL = ([x, y]) => [CENTER.lon + x / M_LON, CENTER.lat + y / M_LAT];
 
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), 'bottom-right');
-map.addControl(new maplibregl.FullscreenControl(), 'bottom-right');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
-
-// Prefer Thai names on label layers
-function useThaiLabels() {
-  for (const layer of map.getStyle().layers) {
-    if (layer.type !== 'symbol') continue;
-    const tf = map.getLayoutProperty(layer.id, 'text-field');
-    if (!tf || !JSON.stringify(tf).includes('name')) continue;
-    map.setLayoutProperty(layer.id, 'text-field',
-      ['coalesce', ['get', 'name:th'], ['get', 'name'], ['get', 'name:latin']]);
+function signedArea(p) {
+  let a = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length];
+    a += x1 * y2 - x2 * y1;
   }
+  return a / 2;
 }
 
-// Replace the style's own building layers with height-colored 3D extrusions
-function add3DBuildings() {
-  const style = map.getStyle();
-  const vectorSource = Object.keys(style.sources).find(k => style.sources[k].type === 'vector');
-  if (!vectorSource) return;
-  for (const layer of style.layers) {
-    if (layer['source-layer'] === 'building') map.removeLayer(layer.id);
+function centroid(p) {
+  let cx = 0, cy = 0, a = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length];
+    const f = x1 * y2 - x2 * y1;
+    a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
   }
-  const firstLabel = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
-  const satellite = currentStyle === 'ดาวเทียม';
-  map.addLayer({
-    id: 'buildings-3d',
-    type: 'fill-extrusion',
-    source: vectorSource,
-    'source-layer': 'building',
-    minzoom: 13,
-    filter: ['!=', ['get', 'hide_3d'], true],
-    paint: {
-      'fill-extrusion-color': [
-        'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6],
-        0,   satellite ? '#d9d4c7' : '#e6dfd3',
-        30,  '#c9c3d9',
-        80,  '#8fb3e0',
-        150, '#4f86c6',
-        250, '#2d5c9e',
-      ],
-      'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['coalesce', ['get', 'render_height'], 6]],
-      'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-      'fill-extrusion-opacity': satellite ? 0.85 : 0.92,
-      'fill-extrusion-vertical-gradient': true,
-    },
-  }, firstLabel);
-  map.setLayoutProperty('buildings-3d', 'visibility', document.getElementById('b3d').checked ? 'visible' : 'none');
+  return [cx / (3 * a), cy / (3 * a)];
 }
 
-let currentStyle = 'สีสัน';
-// Re-apply Thai labels + 3D buildings after every style change
-let customizing = false;
-function applyCustomizations() {
-  if (customizing || !map.getStyle() || map.getLayer('buildings-3d')) return;
-  customizing = true;
-  try {
-    useThaiLabels();
-    add3DBuildings();
-    map.setSky?.({ 'sky-color': '#9cc7ef', 'horizon-color': '#e4eef8', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-color': '#e4eef8' });
-  } finally {
-    customizing = false;
+function inside([x, y], p) {
+  let hit = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    const [xi, yi] = p[i], [xj, yj] = p[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) hit = !hit;
   }
-}
-map.on('styledata', applyCustomizations);
-
-// --- UI: landmarks
-const placesEl = document.getElementById('places');
-for (const p of PLACES) {
-  const b = document.createElement('button');
-  b.className = 'chip';
-  b.textContent = p.name;
-  b.onclick = () => {
-    stopSpin();
-    map.flyTo({ center: [p.lng, p.lat], zoom: p.zoom, bearing: p.bearing, pitch: 65, duration: 3500, essential: true });
-  };
-  placesEl.appendChild(b);
+  return hit;
 }
 
-// --- UI: style switcher
-const stylesEl = document.getElementById('styles');
-for (const name of Object.keys(STYLES)) {
-  const b = document.createElement('button');
-  b.className = 'chip' + (name === currentStyle ? ' active' : '');
-  b.textContent = name;
-  b.onclick = () => {
-    if (name === currentStyle) return;
-    currentStyle = name;
-    stylesEl.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === b));
-    map.setStyle(STYLES[name]);
-    applyCustomizations(); // diffed style swaps apply synchronously without firing styledata
-  };
-  stylesEl.appendChild(b);
+// ขยายรูปหลายเหลี่ยมออกด้านนอก d เมตร (miter offset)
+function offsetPolygon(p, d) {
+  if (signedArea(p) < 0) p = p.slice().reverse();
+  const n = p.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const a = p[(i - 1 + n) % n], b = p[i], c = p[(i + 1) % n];
+    const n1 = norm([b[1] - a[1], a[0] - b[0]]);
+    const n2 = norm([c[1] - b[1], b[0] - c[0]]);
+    const m = norm([n1[0] + n2[0], n1[1] + n2[1]]);
+    const cos = m[0] * n1[0] + m[1] * n1[1];
+    const len = Math.sign(d) * Math.min(Math.abs(d) / Math.max(cos, 0.1), Math.abs(d) * 3);
+    out.push([b[0] + m[0] * len, b[1] + m[1] * len]);
+  }
+  return out;
+}
+function norm([x, y]) { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; }
+
+function perimeter(p) {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    s += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  return s;
 }
 
-// --- UI: pitch slider (two-way)
-const pitchEl = document.getElementById('pitch');
-const pitchVal = document.getElementById('pitchVal');
-pitchEl.oninput = () => { map.setPitch(+pitchEl.value); };
-map.on('pitch', () => {
-  const p = Math.round(map.getPitch());
-  pitchEl.value = p;
-  pitchVal.textContent = p + '°';
-});
-
-// --- UI: 3D toggle
-document.getElementById('b3d').onchange = e => {
-  if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', e.target.checked ? 'visible' : 'none');
-};
-
-// --- UI: auto rotate
-const spinEl = document.getElementById('spin');
-let spinning = false;
-function spinStep() {
-  if (!spinning) return;
-  map.easeTo({ bearing: map.getBearing() + 20, duration: 4000, easing: t => t });
+// ---------- ช่องโล่งใต้อาคาร (voids) ----------
+// part.voids = [{ from, to, floors }] ระยะ (เมตร) ตามแนวยาวปีกนับจากปลายเริ่ม ชั้นล่าง floors ชั้นเปิดโล่งมีแต่เสา
+const lerp2 = (a, c, f) => [a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f];
+function partAxis(part) {
+  const p = part.xy, m = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+  const O = m(p[0], p[1]), E = m(p[2], p[3]);
+  const L = Math.hypot(E[0] - O[0], E[1] - O[1]);
+  const u = [(E[0] - O[0]) / L, (E[1] - O[1]) / L];
+  const half = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) / 2;
+  return { O, u, L, n: [-u[1], u[0]], half, t: (q) => (q[0] - O[0]) * u[0] + (q[1] - O[1]) * u[1] };
 }
-map.on('moveend', () => { if (spinning) spinStep(); });
-function stopSpin() { spinning = false; spinEl.checked = false; }
-spinEl.onchange = () => { spinning = spinEl.checked; if (spinning) spinStep(); else map.stop(); };
-['mousedown', 'touchstart', 'wheel'].forEach(ev => map.getCanvas().addEventListener(ev, stopSpin, { passive: true }));
-
-// --- UI: status bar
-const statusEl = document.getElementById('status');
-function updateStatus() {
-  const c = map.getCenter();
-  statusEl.textContent = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} · ซูม ${map.getZoom().toFixed(1)} · หมุน ${Math.round(map.getBearing())}°`;
-}
-map.on('move', updateStatus);
-updateStatus();
-
-// --- UI: search (OpenStreetMap Nominatim, limited to Bangkok area)
-const qEl = document.getElementById('q');
-const resultsEl = document.getElementById('results');
-let searchTimer, marker;
-qEl.addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  const q = qEl.value.trim();
-  if (q.length < 2) { resultsEl.style.display = 'none'; return; }
-  searchTimer = setTimeout(() => search(q), 500);
-});
-qEl.addEventListener('keydown', e => { if (e.key === 'Escape') resultsEl.style.display = 'none'; });
-document.addEventListener('click', e => { if (!e.target.closest('.search')) resultsEl.style.display = 'none'; });
-
-async function search(q) {
-  const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
-    q, format: 'json', limit: 6, 'accept-language': 'th',
-    viewbox: '100.32,13.96,100.94,13.49', bounded: 1,
+// แบ่งขอบผนังเป็นช่วง คืนค่า [{ a, c, open }] open = จำนวนชั้นที่เปิดโล่ง (0 = ผนังเต็ม)
+function wallSegments(part, ring) {
+  const voids = part.voids || [];
+  const edges = ring.map((a, i) => [a, ring[(i + 1) % ring.length]]);
+  if (!voids.length) return edges.map(([a, c]) => ({ a, c, open: 0 }));
+  const ax = partAxis(part), segs = [];
+  edges.forEach(([a, c]) => {
+    const ta = ax.t(a), tc = ax.t(c), cuts = [0, 1];
+    if (Math.abs(tc - ta) > 1e-6) voids.forEach((v) => [v.from, v.to].forEach((tv) => {
+      const f = (tv - ta) / (tc - ta);
+      if (f > 0 && f < 1) cuts.push(f);
+    }));
+    cuts.sort((x, y) => x - y);
+    for (let k = 0; k < cuts.length - 1; k++) {
+      if (cuts[k + 1] - cuts[k] < 1e-6) continue;
+      const tm = ax.t(lerp2(a, c, (cuts[k] + cuts[k + 1]) / 2));
+      const v = voids.find((v) => tm > v.from && tm < v.to);
+      segs.push({ a: lerp2(a, c, cuts[k]), c: lerp2(a, c, cuts[k + 1]), open: v ? v.floors : 0 });
+    }
   });
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    resultsEl.innerHTML = '';
-    if (!data.length) {
-      resultsEl.innerHTML = '<div style="cursor:default">ไม่พบผลลัพธ์</div>';
+  return segs;
+}
+// เสาและพื้นชั้นบนของช่องโล่ง (พิกัดเมตร) สำหรับวาดทั้งในฉากและไฟล์ .glb
+function voidParts(part) {
+  const ax = partAxis(part), out = [];
+  const half = ax.half + WALL_PAD;
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const square = (t, s, r) => [at(t - r, s - r), at(t + r, s - r), at(t + r, s + r), at(t - r, s + r)];
+  (part.voids || []).forEach((v) => {
+    const h = v.floors * FLOOR_H;
+    const slab = [at(v.from, -half), at(v.to, -half), at(v.to, half), at(v.from, half)];
+    const cols = [];
+    const count = Math.max(2, Math.round((v.to - v.from) / 7.5) + 1);
+    for (let i = 0; i < count; i++) {
+      const t = v.from + 0.4 + (v.to - v.from - 0.8) * i / (count - 1);
+      cols.push(square(t, -half + 0.4, 0.35), square(t, half - 0.4, 0.35));
     }
-    for (const r of data) {
-      const d = document.createElement('div');
-      d.textContent = r.display_name;
-      d.onclick = () => {
-        resultsEl.style.display = 'none';
-        qEl.value = r.display_name.split(',')[0];
-        const lngLat = [+r.lon, +r.lat];
-        stopSpin();
-        marker?.remove();
-        marker = new maplibregl.Marker({ color: '#e5484d' }).setLngLat(lngLat).addTo(map);
-        map.flyTo({ center: lngLat, zoom: 16.5, pitch: 60, duration: 3000 });
-      };
-      resultsEl.appendChild(d);
-    }
-    resultsEl.style.display = 'block';
-  } catch {
-    resultsEl.innerHTML = '<div style="cursor:default">ค้นหาไม่สำเร็จ</div>';
-    resultsEl.style.display = 'block';
-  }
+    // ช่องโล่งที่เปิดออกด้านหัว/ท้ายอาคาร: เพิ่มเสาเรียงด้านนั้น · ขอบช่องโล่งที่อยู่ในอาคาร: มีผนังกั้น
+    const L = ax.L, walls = [];
+    [[v.from, v.from <= 0], [v.to, v.to >= L]].forEach(([t, openEnd]) => {
+      if (openEnd) {
+        const tc = t <= 0 ? v.from + 0.4 : v.to - 0.4;
+        const n2 = Math.max(2, Math.round(2 * half / 7.5) + 1);
+        for (let i = 1; i < n2 - 1; i++) cols.push(square(tc, -half + 0.4 + (2 * half - 0.8) * i / (n2 - 1), 0.35));
+      } else {
+        walls.push([at(t, -half), at(t, half)]);
+      }
+    });
+    out.push({ h, slab, cols, walls });
+  });
+  return out;
 }
 
-// --- mobile collapse
-document.getElementById('toggle').onclick = () => {
-  const panel = document.getElementById('panel');
-  panel.classList.toggle('collapsed');
-  document.getElementById('toggle').textContent = panel.classList.contains('collapsed') ? '▸' : '▾';
+// ตราโรงเรียนบนแผงสีน้ำเงิน (วาดแบบเรียบง่าย) และป้ายชื่อโรงเรียน
+function emblemPanel() {
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 512;
+  const g = c.getContext("2d");
+  g.fillStyle = "#1d2a6b";
+  g.fillRect(0, 0, 128, 512);
+  g.fillStyle = "rgba(255,255,255,0.08)";
+  for (let x = 6; x < 128; x += 10) g.fillRect(x, 0, 3, 512);      // ลายแผงแนวตั้ง
+  g.fillStyle = "#d9b44a";                                          // พระเกี้ยวทรงยอดแหลม
+  g.beginPath(); g.moveTo(64, 40); g.lineTo(88, 150); g.lineTo(40, 150); g.closePath(); g.fill();
+  g.fillRect(36, 150, 56, 14);
+  g.fillStyle = "#e08ab4";                                          // หมอนรองสีชมพู
+  g.beginPath(); g.ellipse(64, 178, 34, 14, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#d9b44a";
+  for (let i = 0; i < 3; i++) g.fillRect(30, 230 + i * 22, 68, 6);  // ตัวอักษรใต้ตรา
+  return c;
+}
+function signBoard(text) {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 96;
+  const g = c.getContext("2d");
+  g.fillStyle = "#7a3b2c";
+  g.fillRect(0, 0, 1024, 96);
+  g.fillStyle = "#e3c36a";
+  g.font = "600 52px 'Noto Sans Thai', sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(text, 512, 50);
+  return c;
+}
+function screenPanel() {
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 96;
+  const g = c.getContext("2d");
+  g.fillStyle = "#24409a"; g.fillRect(0, 0, 128, 96);
+  g.fillStyle = "#15181d"; g.fillRect(8, 8, 112, 80);
+  g.fillStyle = "rgba(255,255,255,0.05)"; g.fillRect(8, 8, 112, 30);
+  return c;
+}
+
+// ของตกแต่งด้านหน้าอาคาร (b.decor) และกันสาดรอบอาคาร (b.sunshade) — พิกัดเมตรตามแกนของปีกแรก
+// side "left"/"right" = ฝั่งซ้าย/ขวาเมื่อมองจากปลายเริ่มไปปลายสุด · from/to = ระยะตามแนวยาว
+function decorParts(part, list) {
+  const ax = partAxis(part), wallS = ax.half + WALL_PAD;
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  return (list || []).map((d) => {
+    const sg = d.side === "right" ? -1 : 1;
+    const S = (k) => sg * (wallS + k);                   // k = ระยะออกจากผนัง
+    const box = (k0, k1, t0, t1) => [at(t0, S(k0)), at(t1, S(k0)), at(t1, S(k1)), at(t0, S(k1))];
+    const out = { d, line: (k) => [at(d.from, S(k)), at(d.to, S(k))] };
+    if (d.type === "canopy") {
+      out.roof = box(0, d.depth, d.from, d.to);
+      out.cols = [];
+      const n = Math.max(2, Math.round((d.to - d.from) / 5) + 1);
+      for (let i = 0; i < n; i++) {
+        const t = d.from + 0.4 + (d.to - d.from - 0.8) * i / (n - 1);
+        out.cols.push(box(d.depth - 0.9, d.depth - 0.3, t - 0.3, t + 0.3));
+      }
+    }
+    if (d.type === "plinth") out.block = box(0, d.depth, d.from, d.to);
+    return out;
+  });
+}
+
+// อัฒจันทร์แบบขั้นเปิดโล่ง: part.bleachers = { rows, rise, front: "left" | "right" }
+// ขั้นต่ำสุดอยู่ด้านหน้า (ฝั่งสนาม) ไล่สูงขึ้นไปด้านหลัง มีแผงกั้นเฉียงแบ่งช่วงและราวด้านหลัง
+function bleacherParts(part) {
+  const ax = partAxis(part), half = ax.half;
+  const cfg = part.bleachers, rows = cfg.rows || 8, rise = cfg.rise || 0.42;
+  const sign = cfg.front === "right" ? -1 : 1;           // left = ฝั่งซ้ายของแนวปลายเริ่ม→ปลายสุด
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const depth = (2 * half) / rows, H = rows * rise;
+  const sAt = (i) => sign * (half - i * depth);           // ระยะจากแนวกลางของขอบหน้าแถวที่ i
+  const steps = [];
+  for (let i = 0; i < rows; i++) {
+    steps.push({ h: (i + 1) * rise, pts: [at(0, sAt(i)), at(ax.L, sAt(i)), at(ax.L, sAt(i + 1)), at(0, sAt(i + 1))] });
+  }
+  const dividers = [];
+  const nDiv = Math.max(2, Math.round(ax.L / 10) + 1);
+  for (let k = 0; k < nDiv; k++) {
+    const t = ax.L * k / (nDiv - 1);
+    dividers.push({ a: at(t, sAt(0)), c: at(t, sAt(rows)), h0: rise + 0.8, h1: H + 0.9 });
+  }
+  return { steps, dividers, back: { a: at(0, sAt(rows)), c: at(ax.L, sAt(rows)), h: H }, H };
+}
+
+// บันไดภายนอก: b.stairs = [{ from: [lon,lat] เชิงบันได, to: [lon,lat] หัวบันได, width, height, base }]
+// แต่ละช่วงเป็นแผ่นพื้นลาดโปร่งใต้ (ไม่ทึบ) มีราวลูกกรงสองข้าง · base = ระดับเชิงบันได (เช่น ชานพัก)
+function stairParts(st) {
+  const a = toXY(st.from), c = toXY(st.to);
+  const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const u = [(c[0] - a[0]) / L, (c[1] - a[1]) / L], nrm = [-u[1], u[0]], h = (st.width || 4) / 2;
+  const off = (p, k) => [p[0] + nrm[0] * k, p[1] + nrm[1] * k];
+  const z0 = st.base || 0, H = st.height || FLOOR_H, z1 = z0 + H, T = 0.35;   // T = ความหนาท้องบันได
+  const steps = [];
+  const nSteps = Math.max(2, Math.round(H / 0.17));
+  for (let i = 1; i < nSteps; i++) {
+    const f = i / nSteps, p = [a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f];
+    steps.push([[...off(p, -h), z0 + H * f + 0.02], [...off(p, h), z0 + H * f + 0.02]]);
+  }
+  const band = (k) => [[...off(a, k), z0 - T], [...off(c, k), z1 - T], [...off(c, k), z1], [...off(a, k), z0]];
+  return {
+    slope: [[...off(a, -h), z0], [...off(a, h), z0], [...off(c, h), z1], [...off(c, -h), z1]],
+    under: [[...off(a, -h), z0 - T], [...off(a, h), z0 - T], [...off(c, h), z1 - T], [...off(c, -h), z1 - T]],
+    stringers: [band(-h), band(h)],
+    sides: [[off(a, -h + 0.12), off(c, -h + 0.12)], [off(a, h - 0.12), off(c, h - 0.12)]],
+    z0, z1, steps
+  };
+}
+// ลูกกรงราวบันได (โปร่ง) ใช้กับผนังราว
+let balusterCanvas = null;
+function balusters() {
+  if (balusterCanvas) return balusterCanvas;
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f4f5f7";
+  g.fillRect(0, 0, 128, 12);                      // ราวมือจับ
+  g.fillRect(0, 56, 128, 8);                      // ราวล่าง
+  for (let x = 4; x < 128; x += 16) g.fillRect(x, 12, 6, 44);   // ลูกกรง
+  balusterCanvas = c;
+  return c;
+}
+
+// ทางเดินเชื่อมเปิดโล่ง: เสา พื้นทางเดินแต่ละชั้น และราวกันตก (พิกัดเมตร)
+function walkwayParts(part, floors) {
+  const ax = partAxis(part), half = ax.half;
+  const at = (t, s) => [ax.O[0] + ax.u[0] * t + ax.n[0] * s, ax.O[1] + ax.u[1] * t + ax.n[1] * s];
+  const square = (t, s, r) => [at(t - r, s - r), at(t + r, s - r), at(t + r, s + r), at(t - r, s + r)];
+  const cols = [], slabs = [], rails = [];
+  const count = Math.max(2, Math.round(ax.L / 6) + 1);
+  for (let i = 0; i < count; i++) {
+    const t = 0.3 + (ax.L - 0.6) * i / (count - 1);
+    cols.push(square(t, -half + 0.3, 0.25), square(t, half - 0.3, 0.25));
+  }
+  if (part.walkway.frontCols) {                 // เสาเรียงด้านหน้า (ปลายเริ่ม) สำหรับมุขเปิดโล่ง
+    const n2 = Math.max(2, Math.round(2 * half / 4) + 1);
+    for (let i = 1; i < n2 - 1; i++) cols.push(square(0.3, -half + 0.3 + (2 * half - 0.6) * i / (n2 - 1), 0.25));
+  }
+  // ราวกันตก: ค่าเริ่มต้นสองข้างตามแนวยาว · walkway.rails = ["front", "left", "right"] เลือกเองได้
+  const railSides = part.walkway.rails || ["left", "right"];
+  for (let f = part.walkway.open; f < floors; f++) {
+    const z = f * FLOOR_H;
+    slabs.push({ z, pts: [at(0, -half - 0.4), at(ax.L, -half - 0.4), at(ax.L, half + 0.4), at(0, half + 0.4)] });
+    if (railSides.includes("right")) rails.push({ z, a: at(0, -half - 0.35), c: at(ax.L, -half - 0.35) });
+    if (railSides.includes("left")) rails.push({ z, a: at(0, half + 0.35), c: at(ax.L, half + 0.35) });
+    if (railSides.includes("front")) rails.push({ z, a: at(-0.35, -half - 0.35), c: at(-0.35, half + 0.35) });
+  }
+  return { cols, slabs, rails };
+}
+
+// จุดตัวอย่างภายในอาคาร ห่างกัน ~step เมตร
+function gridInside(p, step, max) {
+  const xs = p.map((q) => q[0]), ys = p.map((q) => q[1]);
+  const pts = [];
+  for (let x = Math.min(...xs) + step / 2; x < Math.max(...xs); x += step)
+    for (let y = Math.min(...ys) + step / 2; y < Math.max(...ys); y += step)
+      if (inside([x, y], p)) pts.push([x, y]);
+  if (pts.length <= max) return pts;
+  const k = pts.length / max;
+  return Array.from({ length: max }, (_, i) => pts[Math.floor(i * k)]);
+}
+
+// ---------- เตรียมข้อมูลอาคาร ----------
+BUILDINGS.forEach((b) => {
+  // อาคารหนึ่งหลังมีได้หลายปีก (parts) แต่ละปีกเป็นสี่เหลี่ยมพร้อมทรงหลังคาของตัวเอง
+  const parts = b.parts || (b.footprint ? [{ footprint: b.footprint }] : []);
+  b.parts = parts.map((p) => ({ ...b, ...p, parts: undefined, xy: p.footprint.map(toXY) }));
+  // voids ที่ระบุ fromEnd: true นับระยะย้อนจากปลายสุดของปีก (ค่าติดลบ = เข้ามาในปีก)
+  b.parts.forEach((p) => {
+    if (!p.voids) return;
+    const L = partAxis(p).L;
+    p.voids = p.voids.map((v) => v.fromEnd ? { ...v, from: L + v.from, to: L + v.to } : v);
+  });
+  if (b.parts.length) {
+    b.xy = b.parts[0].xy;
+    const c = centroid(b.xy);
+    if (inside(c, b.xy)) b.labelXY = c;
+    else {
+      const g = gridInside(b.xy, 2, 400);
+      b.labelXY = g.reduce((best, q) =>
+        Math.hypot(q[0] - c[0], q[1] - c[1]) < Math.hypot(best[0] - c[0], best[1] - c[1]) ? q : best, g[0] || c);
+    }
+    const all = b.parts.flatMap((p) => p.xy);
+    const xs = all.map((q) => q[0]), ys = all.map((q) => q[1]);
+    b.size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  } else {
+    b.labelXY = toXY(b.center);
+    b.size = 80;
+  }
+  b.labelLL = toLL(b.labelXY);
+});
+
+// ---------- พื้นผิวอาคาร (วาดด้วย canvas) ----------
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v) => Math.max(0, Math.min(255, Math.round(v + (f > 0 ? (255 - v) * f : v * f))));
+  return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
+}
+
+const facadeCache = {};
+function facade(wall, type, accent) {
+  const key = wall + type + (accent || "");
+  if (facadeCache[key]) return facadeCache[key];
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = wall;
+  g.fillRect(0, 0, 128, 128);
+
+  if (type === "plain") {
+    g.fillStyle = shade(wall, -0.06);
+    g.fillRect(0, 0, 128, 4);
+  } else if (type === "hall") {
+    // อาคารสูงชั้นเดียว: ผนังทึบด้านล่าง ช่องระบายอากาศด้านบน
+    g.fillStyle = shade(wall, -0.18);
+    g.fillRect(0, 110, 128, 18);
+    g.fillStyle = "#3d4a57";
+    g.fillRect(8, 12, 112, 30);
+    g.fillStyle = shade(wall, -0.05);
+    for (let x = 8; x < 120; x += 8) g.fillRect(x, 12, 2, 30);
+  } else if (type === "ribbon") {
+    // แบบตึกเรียน: แถบหน้าต่างบานเกล็ดเล็กกรอบขาว ใต้กันสาดมีเงาเข้ม
+    g.fillStyle = shade(wall, -0.22);
+    g.fillRect(0, 0, 128, 16);                       // เงาใต้กันสาด
+    g.fillStyle = accent || "#24409a";
+    g.fillRect(0, 16, 128, 3);
+    g.fillStyle = "#2f3c4a";
+    g.fillRect(8, 38, 112, 58);                      // ช่องหน้าต่าง
+    g.fillStyle = "#f7f8f9";
+    for (let x = 8; x <= 120; x += 14) g.fillRect(x, 38, 3, 58);   // กรอบบานแนวตั้ง
+    g.fillRect(8, 38, 112, 3);
+    g.fillRect(8, 64, 112, 3);
+    g.fillRect(8, 93, 112, 3);
+    g.fillStyle = "rgba(255,255,255,0.16)";
+    for (let x = 11; x < 120; x += 14) g.fillRect(x, 42, 11, 8);
+    g.fillStyle = shade(wall, -0.08);
+    g.fillRect(0, 104, 128, 4);                      // ขอบผนังใต้หน้าต่าง
+    if (accent) {
+      g.fillStyle = accent;
+      g.fillRect(0, 16, 6, 112);
+      g.fillRect(122, 16, 6, 112);
+    }
+  } else if (type === "arch") {
+    // หน้าต่างโค้ง (แบบอาคารเฉลิมพระเกียรติ)
+    g.fillStyle = shade(wall, -0.1);
+    g.fillRect(0, 0, 128, 10);
+    const glass = g.createLinearGradient(0, 15, 0, 108);
+    glass.addColorStop(0, "#5f7f7a");
+    glass.addColorStop(1, "#24383a");
+    g.fillStyle = glass;
+    g.beginPath();
+    g.moveTo(29, 108); g.lineTo(29, 50); g.arc(64, 50, 35, Math.PI, 0); g.lineTo(99, 108); g.closePath();
+    g.fill();
+    g.strokeStyle = shade(wall, 0.15); g.lineWidth = 3;
+    g.beginPath(); g.moveTo(64, 15); g.lineTo(64, 108); g.moveTo(29, 66); g.lineTo(99, 66); g.stroke();
+    g.fillStyle = shade(wall, -0.25);
+    g.fillRect(24, 108, 80, 5);
+  } else {
+    // หนึ่งช่องหน้าต่าง × หนึ่งชั้น
+    g.fillStyle = shade(wall, -0.14);
+    g.fillRect(0, 0, 128, 12);                       // พื้นชั้น / คาน
+    const glass = g.createLinearGradient(0, 30, 0, 100);
+    glass.addColorStop(0, "#5b7690");
+    glass.addColorStop(1, "#2c3c4d");
+    g.fillStyle = glass;
+    g.fillRect(16, 30, 96, 70);                      // หน้าต่าง
+    g.fillStyle = shade(wall, 0.1);
+    g.fillRect(16, 63, 96, 3);                       // กรอบกลาง
+    g.fillRect(62, 30, 4, 70);
+    g.fillStyle = shade(wall, -0.25);
+    g.fillRect(12, 100, 104, 5);                     // ขอบล่างหน้าต่าง
+    g.fillStyle = "rgba(255,255,255,0.18)";
+    g.fillRect(20, 34, 38, 10);                      // แสงสะท้อน
+    if (accent) {
+      g.fillStyle = accent;                          // เสาสีประจำอาคารระหว่างช่องหน้าต่าง
+      g.fillRect(0, 0, 7, 128);
+      g.fillRect(121, 0, 7, 128);
+      g.fillRect(0, 12, 128, 3);                     // ขอบกันสาดสีเข้มใต้พื้นชั้น
+    }
+  }
+  facadeCache[key] = c;
+  return c;
+}
+
+// หลังคาทรงจั่ว (gable) / ทรงปั้นหยา (hip) สำหรับอาคารสี่เหลี่ยม คืนค่า null ถ้าเป็นหลังคาแบน
+function pitchedRoof(b, top) {
+  if (!b.roofType || b.roofType === "flat") return null;
+  if (b.roofType === "hip" && !b.ends) return hipRoof(b, top);
+  if (b.xy.length !== 4) return null;
+  let p = offsetPolygon(b.xy, WALL_PAD + 0.7);               // ชายคายื่นออกจากผนัง
+  const len = (a, c) => Math.hypot(c[0] - a[0], c[1] - a[1]);
+  // ให้ p0-p1 เป็นด้านหน้าจั่ว (ตั้งฉากกับสันหลังคา) · ridgeEdge ใน buildings.js บังคับทิศสันได้
+  // ปีกอาคารที่มี ends: จุด 1→2 คือปลายเริ่ม สันหลังคาวิ่งตามความยาวปีกเสมอ
+  const ridgeAlongFirst = b.ends ? false : b.ridgeEdge != null ? b.ridgeEdge === 0 : len(p[0], p[1]) > len(p[1], p[2]);
+  if (ridgeAlongFirst) p = [p[1], p[2], p[3], p[0]];
+  const mid = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+  const width = (len(p[0], p[1]) + len(p[2], p[3])) / 2;
+  const rise = width * (b.pitch ?? 0.32);                    // pitch = ความชันหลังคา (สูง/กว้าง)
+  let r0 = mid(p[0], p[1]), r1 = mid(p[2], p[3]);
+  // ปลายแต่ละด้าน: "hip" = ลาดปั้นหยา, "gable" = หน้าจั่ว (ใช้ตรงจุดที่ปีกไปชนอาคารอื่น สันจะต่อกันพอดี)
+  const ends = b.ends || (b.roofType === "hip" ? ["hip", "hip"] : ["gable", "gable"]);
+  const L = len(r0, r1), k = Math.min(width / 2, L / 2 - 0.01) / L;
+  const d = [(r1[0] - r0[0]) * k, (r1[1] - r0[1]) * k];
+  const r0e = ends[0] === "hip" ? [r0[0] + d[0], r0[1] + d[1]] : r0;
+  const r1e = ends[1] === "hip" ? [r1[0] - d[0], r1[1] - d[1]] : r1;
+  r0 = r0e; r1 = r1e;
+  const z = top, zr = top + rise;
+  const P = (q) => [q[0], q[1], z], R = (q) => [q[0], q[1], zr];
+  const roof = b.roof || "#8a857c";
+  const endColor = (e) => e === "hip" ? shadeHex(roof, -0.08) : (b.wall || "#ece6d6");
+  const faces = [
+    { pts: [P(p[1]), P(p[2]), R(r1), R(r0)], color: roof },
+    { pts: [P(p[3]), P(p[0]), R(r0), R(r1)], color: shadeHex(roof, -0.15) },
+    { pts: [P(p[0]), P(p[1]), R(r0)], color: endColor(ends[0]) },
+    { pts: [P(p[2]), P(p[3]), R(r1)], color: endColor(ends[1]) }
+  ];
+  // ครอบสันและครอบตะเข้ (เส้นสีขาวบนหลังคาจริง)
+  faces.ridges = [[R(r0), R(r1)]];
+  if (ends[0] === "hip") faces.ridges.push([R(r0), P(p[0])], [R(r0), P(p[1])]);
+  if (ends[1] === "hip") faces.ridges.push([R(r1), P(p[2])], [R(r1), P(p[3])]);
+  return faces;
+}
+// หลังคาปั้นหยาสำหรับอาคารรูปทรงใดก็ได้: ลาดจากชายคาขึ้นไปหาแนวสันที่หดเข้าด้านใน
+function hipRoof(b, top) {
+  const outer = offsetPolygon(b.xy, WALL_PAD + 0.7);
+  const len = (a, c) => Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const inset = b.roofInset ?? (outer.length === 4
+    ? 0.47 * Math.min(len(outer[0], outer[1]), len(outer[1], outer[2]))
+    : 4.5);
+  const inner = offsetPolygon(outer, -inset);
+  const zr = top + inset * 0.6;                                // ความชันประมาณ 30°
+  const roof = b.roof || "#8a857c";
+  const ccw = outer;                                           // offsetPolygon คืนค่าแบบทวนเข็มเสมอ
+  const faces = ccw.map((q, i) => {
+    const j = (i + 1) % ccw.length;
+    // แรเงาตามทิศของด้าน ให้หลังคาดูมีมิติแม้แสงจะแบน
+    const ex = ccw[j][0] - q[0], ey = ccw[j][1] - q[1];
+    const facing = (ey * 0.45 + ex * 0.5) / (Math.hypot(ex, ey) || 1);   // normal ด้านนอก · ทิศดวงอาทิตย์
+    return {
+      pts: [[q[0], q[1], top], [ccw[j][0], ccw[j][1], top], [inner[j][0], inner[j][1], zr], [inner[i][0], inner[i][1], zr]],
+      color: shadeHex(roof, facing * 0.18)
+    };
+  });
+  faces.push({ pts: inner.map(([x, y]) => [x, y, zr]), color: shadeHex(roof, 0.25) });   // สันหลังคา (สีอ่อนเหมือนครอบสัน)
+  faces.ridges = ccw.map((q, k) => [[q[0], q[1], top], [inner[k][0], inner[k][1], zr]])
+    .concat(inner.map((q, k) => [[q[0], q[1], zr], [inner[(k + 1) % inner.length][0], inner[(k + 1) % inner.length][1], zr]]));
+  return faces;
+}
+function shadeHex(hex, f) {
+  const m = shade(hex, f).match(/\d+/g).map(Number);
+  return "#" + m.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+// ---------- ส่งออกโมเดลเป็น .glb ----------
+// พิกัดในไฟล์: หน่วยเมตร จุดกำเนิดที่กลางโรงเรียน แกน X = ตะวันออก, Y = ขึ้น, -Z = เหนือ (ตามมาตรฐาน glTF)
+function srgbToLinear(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+function hexToLinear(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [srgbToLinear(n >> 16), srgbToLinear((n >> 8) & 255), srgbToLinear(n & 255), 1];
+}
+
+function triangulate(pts) {
+  if (pts.length <= 4) return pts.length === 3 ? [0, 1, 2] : [0, 1, 2, 0, 2, 3];
+  return Cesium.PolygonPipeline.triangulate(pts.map(([x, y]) => new Cesium.Cartesian2(x, y)));
+}
+
+function buildGlb() {
+  const materials = [];
+  const matIndex = {};
+  const material = (name, hex, metal = 0, rough = 0.9) => {
+    const key = name + hex;
+    if (matIndex[key] == null) {
+      matIndex[key] = materials.length;
+      materials.push({ name, doubleSided: true,
+        pbrMetallicRoughness: { baseColorFactor: hexToLinear(hex), metallicFactor: metal, roughnessFactor: rough } });
+    }
+    return matIndex[key];
+  };
+  const P = ([x, y, z]) => [x, z, -y];   // ENU → glTF
+
+  const meshes = [];
+  const addMesh = (name, prims) => {
+    const list = Object.entries(prims).filter(([, v]) => v.length).map(([m, v]) => ({ m: +m, pos: v }));
+    if (list.length) meshes.push({ name, prims: list });
+  };
+  // เพิ่มรูปหลายเหลี่ยม (จุด [x,y,z] ใน ENU) ลงชุดสามเหลี่ยมของวัสดุ m
+  const poly = (prims, m, pts) => {
+    const idx = triangulate(pts);
+    (prims[m] = prims[m] || []);
+    for (const i of idx) prims[m].push(...P(pts[i]));
+  };
+  const quad = (prims, m, a, b, z0, z1, off = 0, nx = 0, ny = 0) => {
+    const o = [nx * off, ny * off];
+    poly(prims, m, [
+      [a[0] + o[0], a[1] + o[1], z0], [b[0] + o[0], b[1] + o[1], z0],
+      [b[0] + o[0], b[1] + o[1], z1], [a[0] + o[0], a[1] + o[1], z1]
+    ]);
+  };
+
+  // ฐานโรงเรียน
+  const base = {};
+  poly(base, material("ground", "#8f9a86"), SCHOOL_OUTLINE.map(toXY).map(([x, y]) => [x, y, -0.05]));
+  BUILDINGS.forEach((b) => {
+    if (b.model === false) return;
+    b.parts.forEach((part) => poly(base, material("cement", GROUND_COLOR), offsetPolygon(part.xy, WALL_PAD + 0.5).map(([x, y]) => [x, y, 0])));
+  });
+  addMesh("พื้นโรงเรียน", base);
+
+  const glass = material("glass", "#2c3c4d", 0.3, 0.15);
+  const vent = material("vent", "#3d4a57", 0.2, 0.6);
+
+  BUILDINGS.forEach((b) => {
+    if (!b.xy || b.model === false) return;
+    const prims = {};
+    const wallM = material("wall-" + b.id, b.wall || "#ece6d6");
+    const roofM = material("roof-" + b.id, b.roof || "#8a857c");
+    const accentM = b.accent ? material("accent-" + b.id, b.accent) : null;
+    const slabM = material("slab", "#d9dde2");
+    const colM = material("column", "#f4f5f7");
+    for (const part of b.parts) {
+      if (part.bleachers) {
+        const bl = bleacherParts(part), stepM = material("bleacher", "#cfd2d6");
+        bl.steps.forEach((st) => {
+          poly(prims, stepM, st.pts.map(([x, y]) => [x, y, st.h]));
+          st.pts.forEach((q, i) => quad(prims, stepM, q, st.pts[(i + 1) % 4], 0, st.h));
+        });
+        bl.dividers.forEach((d) => poly(prims, colM, [[...d.a, 0], [...d.c, 0], [...d.c, d.h1], [...d.a, d.h0]]));
+        quad(prims, colM, bl.back.a, bl.back.c, bl.H + 0.95, bl.H + 1.1);
+        continue;
+      }
+      const ring = offsetPolygon(part.xy, WALL_PAD);   // ทวนเข็มนาฬิกา
+      const top = part.height ?? b.h;
+      const isHall = b.nFloors === 1 && top > 5;
+
+      if (part.walkway) {
+        const w = walkwayParts(part, b.nFloors);
+        w.cols.forEach((sq) => sq.forEach((q, i) => {
+          const r = sq[(i + 1) % 4];
+          quad(prims, accentM || wallM, q, r, 0, 1.4);
+          quad(prims, colM, q, r, 1.4, top);
+        }));
+        w.slabs.forEach((sl) => {
+          poly(prims, slabM, sl.pts.map(([x, y]) => [x, y, sl.z]));
+          poly(prims, slabM, sl.pts.map(([x, y]) => [x, y, sl.z - 0.35]));
+          sl.pts.forEach((q, i) => quad(prims, slabM, q, sl.pts[(i + 1) % 4], sl.z - 0.35, sl.z));
+        });
+        w.rails.forEach((r) => {
+          quad(prims, colM, r.a, r.c, r.z, r.z + 1.1);
+          if (part.walkway.arches) quad(prims, colM, r.a, r.c, r.z + FLOOR_H - 1.1, r.z + FLOOR_H - 0.35);   // คานซุ้มโค้ง
+        });
+      }
+      if (!part.walkway) wallSegments(part, ring).forEach(({ a, c, open }) => {
+        const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        if (L < 1e-3) return;
+        const nx = (c[1] - a[1]) / L, ny = -(c[0] - a[0]) / L;     // ทิศออกนอกอาคาร
+        const zBase = open * FLOOR_H;                                // ช่วงเปิดโล่ง: ผนังเริ่มที่ชั้นบน
+        quad(prims, wallM, a, c, zBase, top);
+        if (L < 2.5) return;
+        const at = (t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t];
+        if (part.facade === "plain") return;
+        if (isHall) {
+          quad(prims, vent, at(0.4 / L), at(1 - 0.4 / L), top - 3.2, top - 1.2, 0.05, nx, ny);
+          return;
+        }
+        const bays = Math.max(1, Math.round(L / 3.6)), bw = L / bays;
+        if (accentM) for (let k = 0; k <= bays; k++) {             // เสาสีประจำอาคาร
+          const t = k * bw / L, w = 0.22 / L;
+          quad(prims, accentM, at(Math.max(0, t - w)), at(Math.min(1, t + w)), zBase, top, 0.07, nx, ny);
+        }
+        for (let f = open; f < b.nFloors; f++) {
+          const z0 = f * FLOOR_H + 0.9, z1 = z0 + 1.9;
+          if (z1 > top - 0.3) break;
+          for (let k = 0; k < bays; k++) {
+            const t0 = (k * bw + bw * 0.15) / L, t1 = ((k + 1) * bw - bw * 0.15) / L;
+            quad(prims, glass, at(t0), at(t1), z0, z1, 0.05, nx, ny);
+          }
+        }
+      });
+
+      voidParts(part).forEach((v) => {
+        poly(prims, slabM, v.slab.map(([x, y]) => [x, y, v.h - 0.35]));          // ฝ้าใต้ชั้นบน
+        v.walls.forEach(([a, c]) => quad(prims, wallM, a, c, 0, v.h));
+        v.cols.forEach((sq) => sq.forEach((q, i) => {
+          const r = sq[(i + 1) % 4];
+          quad(prims, accentM || wallM, q, r, 0, 1.4);
+          quad(prims, colM, q, r, 1.4, v.h - 0.35);
+        }));
+      });
+
+      const faces = pitchedRoof(part, top);
+      if (faces) {
+        faces.forEach((f) => {
+          const m = f.color === (b.wall || "#ece6d6") ? wallM : roofM;
+          poly(prims, m, f.pts);
+        });
+        // ฝ้าใต้ชายคา
+        const eave = offsetPolygon(part.xy, WALL_PAD + 0.7);
+        poly(prims, roofM, eave.map(([x, y]) => [x, y, top]));
+      } else {
+        ring.forEach((a, i) => quad(prims, wallM, a, ring[(i + 1) % ring.length], top, top + 0.9));
+        poly(prims, roofM, ring.map(([x, y]) => [x, y, top + 0.9]));
+      }
+    }
+    if (b.sunshade) b.parts.forEach((part) => {
+      if (part.walkway || part.bleachers) return;
+      const inner = offsetPolygon(part.xy, WALL_PAD), outer = offsetPolygon(part.xy, WALL_PAD + b.sunshade);
+      const openF = Math.max(0, ...(part.voids || []).map((v) => v.floors));
+      for (let f = Math.max(1, openF + 1); f < b.nFloors; f++) {
+        const z = f * FLOOR_H;
+        outer.forEach((q, i) => {
+          const j = (i + 1) % outer.length;
+          poly(prims, colM, [[...q, z], [...outer[j], z], [...inner[j], z], [...inner[i], z]]);
+          quad(prims, colM, q, outer[j], z - 0.18, z);
+        });
+      }
+    });
+    if (b.decor) decorParts(b.parts[0], b.decor).forEach((dp) => {
+      const d = dp.d, box = (pts, z0, z1, m) => {
+        poly(prims, m, pts.map(([x, y]) => [x, y, z1]));
+        pts.forEach((q, i) => quad(prims, m, q, pts[(i + 1) % pts.length], z0, z1));
+      };
+      if (d.type === "panel") { const [a, c] = dp.line(d.offset ?? 0.4); quad(prims, material(d.image === "emblem" ? "emblem" : "screen", d.image === "emblem" ? "#1d2a6b" : "#15181d"), a, c, d.z0, d.z1); }
+      if (d.type === "canopy") {
+        box(dp.roof, d.z1 - 0.3, d.z1, material("canopy", "#5b2c22"));
+        const [a, c] = dp.line(d.depth + 0.02); quad(prims, material("sign", "#7a3b2c"), a, c, d.z0, d.z1);
+        dp.cols.forEach((c2) => box(c2, 0, d.z0, material("canopy-col", "#1d2a6b")));
+      }
+      if (d.type === "plinth") box(dp.block, 0, d.h, material("plinth", d.color || "#8e4f42"));
+    });
+    (b.stairs || []).forEach((st) => {
+      const sp = stairParts(st);
+      poly(prims, material("stairs", "#a8553e"), sp.slope);
+      poly(prims, slabM, sp.under);
+      sp.stringers.forEach((f) => poly(prims, colM, f));
+      sp.sides.forEach(([a, c]) => poly(prims, colM, [[...a, sp.z0 + 0.85], [...c, sp.z1 + 0.85], [...c, sp.z1 + 1.0], [...a, sp.z0 + 1.0]]));
+    });
+    (b.platforms || []).forEach((pf) => {
+      const pts = pf.footprint.map(toXY);
+      poly(prims, material("stairs", "#a8553e"), pts.map(([x, y]) => [x, y, pf.height]));
+      pts.forEach((q, i) => quad(prims, colM, q, pts[(i + 1) % pts.length], 0, pf.height));
+    });
+    addMesh(b.name, prims);
+  });
+
+  // ประกอบไฟล์ GLB
+  const chunks = [];
+  let byteLen = 0;
+  const bufferViews = [], accessors = [];
+  const gltfMeshes = meshes.map((mesh) => ({
+    name: mesh.name,
+    primitives: mesh.prims.map(({ m, pos }) => {
+      const p = new Float32Array(pos);
+      const n = new Float32Array(p.length);
+      for (let i = 0; i < p.length; i += 9) {
+        const ux = p[i + 3] - p[i], uy = p[i + 4] - p[i + 1], uz = p[i + 5] - p[i + 2];
+        const vx = p[i + 6] - p[i], vy = p[i + 7] - p[i + 1], vz = p[i + 8] - p[i + 2];
+        let cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+        const l = Math.hypot(cx, cy, cz) || 1;
+        cx /= l; cy /= l; cz /= l;
+        for (let k = 0; k < 3; k++) { n[i + k * 3] = cx; n[i + k * 3 + 1] = cy; n[i + k * 3 + 2] = cz; }
+      }
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < p.length; i++) { min[i % 3] = Math.min(min[i % 3], p[i]); max[i % 3] = Math.max(max[i % 3], p[i]); }
+      const view = (arr) => {
+        bufferViews.push({ buffer: 0, byteOffset: byteLen, byteLength: arr.byteLength, target: 34962 });
+        chunks.push(arr);
+        byteLen += arr.byteLength;
+        return bufferViews.length - 1;
+      };
+      accessors.push({ bufferView: view(p), componentType: 5126, count: p.length / 3, type: "VEC3", min, max });
+      const posA = accessors.length - 1;
+      accessors.push({ bufferView: view(n), componentType: 5126, count: n.length / 3, type: "VEC3" });
+      return { attributes: { POSITION: posA, NORMAL: accessors.length - 1 }, material: m };
+    })
+  }));
+
+  const gltf = {
+    asset: { version: "2.0", generator: "Bodindecha 3D (bodindecha.html)",
+      copyright: "อาคาร © OpenStreetMap contributors (ODbL)" },
+    scene: 0,
+    scenes: [{ name: "โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี)", nodes: gltfMeshes.map((_, i) => i) }],
+    nodes: gltfMeshes.map((m, i) => ({ name: m.name, mesh: i })),
+    meshes: gltfMeshes, materials, accessors, bufferViews,
+    buffers: [{ byteLength: byteLen }]
+  };
+
+  const enc = new TextEncoder();
+  let json = enc.encode(JSON.stringify(gltf));
+  const jsonPad = (4 - json.length % 4) % 4;
+  const binPad = (4 - byteLen % 4) % 4;
+  const total = 12 + 8 + json.length + jsonPad + 8 + byteLen + binPad;
+  const out = new Uint8Array(total);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, 0x46546C67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, json.length + jsonPad, true); dv.setUint32(16, 0x4E4F534A, true);
+  out.set(json, 20);
+  out.fill(0x20, 20 + json.length, 20 + json.length + jsonPad);
+  let o = 20 + json.length + jsonPad;
+  dv.setUint32(o, byteLen + binPad, true); dv.setUint32(o + 4, 0x004E4942, true);
+  o += 8;
+  for (const c of chunks) { out.set(new Uint8Array(c.buffer, c.byteOffset, c.byteLength), o); o += c.byteLength; }
+  return out;
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.download = name;
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ผนังซุ้มโค้งโปร่ง (ช่องเปิดโปร่งใส) หนึ่งช่องเสา × หนึ่งชั้น สำหรับทางเดินแบบมีซุ้มโค้ง
+let archScreenCanvas = null;
+function archScreen() {
+  if (archScreenCanvas) return archScreenCanvas;
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f4f5f7";
+  g.fillRect(0, 0, 256, 256);
+  g.globalCompositeOperation = "destination-out";
+  g.beginPath();
+  g.moveTo(32, 256); g.lineTo(32, 122); g.arc(128, 122, 96, Math.PI, 0); g.lineTo(224, 256); g.closePath();
+  g.fill();
+  g.globalCompositeOperation = "source-over";
+  g.fillStyle = "#e9ebee";
+  g.fillRect(0, 0, 256, 10);                     // คานบน
+  g.fillStyle = "#c9ced4";                       // ราวกันตกโลหะ
+  g.fillRect(32, 182, 192, 6);
+  g.fillRect(32, 218, 192, 3);
+  for (let x = 44; x < 224; x += 22) g.fillRect(x, 182, 3, 74);
+  archScreenCanvas = c;
+  return c;
+}
+
+// ---------- แอป ----------
+function start() {
+  const viewer = new Cesium.Viewer("map", {
+    baseLayer: new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+      url: ESRI_URL, maximumLevel: 19, credit: ESRI_CREDIT
+    })),
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    infoBox: false,
+    selectionIndicator: false
+  });
+  const scene = viewer.scene;
+  scene.skyAtmosphere.show = true;
+  scene.backgroundColor = Cesium.Color.fromCssColorString("#0e1117");
+  scene.globe.baseColor = Cesium.Color.fromCssColorString("#0e1117");
+  scene.globe.showGroundAtmosphere = false;
+
+  // แสงคงที่จากทิศตะวันออกเฉียงใต้ ให้โมเดลอาคารมีมิติไม่ว่าเวลาใด
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(CENTER.lon, CENTER.lat));
+  const sun = Cesium.Matrix4.multiplyByPointAsVector(enu, new Cesium.Cartesian3(-0.45, 0.5, -0.74), new Cesium.Cartesian3());
+  scene.light = new Cesium.DirectionalLight({ direction: Cesium.Cartesian3.normalize(sun, sun), intensity: 2.2 });
+
+  // ตัดให้เหลือเฉพาะพื้นที่ในรั้วโรงเรียน
+  const clip = new Cesium.ClippingPolygonCollection({
+    polygons: [new Cesium.ClippingPolygon({
+      positions: Cesium.Cartesian3.fromDegreesArray(SCHOOL_OUTLINE.map(toXY).map(toLL).flat())
+    })],
+    inverse: true
+  });
+  scene.globe.clippingPolygons = clip;
+  clip.enabled = false;   // ค่าเริ่มต้น: แสดงภาพดาวเทียมเต็มพื้นที่ กดปุ่ม "เฉพาะโรงเรียน" เพื่อตัดเหลือในรั้ว
+
+  const ground = 0;   // ภาพดาวเทียมวางบนผิวทรงรีโลก (ไม่มีข้อมูลความสูงภูมิประเทศ)
+  const sphereAt = (ll, h, r) => new Cesium.BoundingSphere(Cesium.Cartesian3.fromDegrees(ll[0], ll[1], ground + h), r);
+
+  function flyHome(duration) {
+    viewer.camera.flyToBoundingSphere(sphereAt([CENTER.lon, CENTER.lat], 10, 250), {
+      offset: new Cesium.HeadingPitchRange(deg(-20), deg(-35), 650),
+      duration: duration ?? 2
+    });
+  }
+  function flyTop() {
+    viewer.camera.flyToBoundingSphere(sphereAt([CENTER.lon, CENTER.lat], 10, 250), {
+      offset: new Cesium.HeadingPitchRange(deg(0), deg(-89), 750),
+      duration: 2
+    });
+  }
+  function flyBuilding(b) {
+    const r = b.size / 2 + 10;
+    viewer.camera.flyToBoundingSphere(sphereAt(b.labelLL, (b.h || 10) / 2, r), {
+      offset: new Cesium.HeadingPitchRange(deg(-30), deg(-28), Math.max(90, r * 3.2)),
+      duration: 2
+    });
+  }
+
+  $("controls").classList.remove("hidden");
+  flyHome(0);
+
+  setStatus("ความสูงอาคารคำนวณจากจำนวนชั้นใน buildings.js");
+
+  const modelEntities = [];
+  // พื้นปูนซีเมนต์เฉพาะใต้โมเดล 3D (ส่วนอื่นยังเป็นภาพดาวเทียม) ปิดได้ด้วยปุ่ม "พื้นปูน"
+  const cementPads = [];
+  BUILDINGS.forEach((b) => {
+    if (b.model === false) return;
+    b.parts.forEach((part, pi) => cementPads.push(viewer.entities.add({
+      id: "ground-" + b.id + "-" + pi,
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(offsetPolygon(part.xy, WALL_PAD + 0.5).map(toLL).flat()),
+        height: ground + 0.03,
+        material: Cesium.Color.fromCssColorString(GROUND_COLOR)
+      }
+    })));
+  });
+  const labelEntities = [];
+
+  BUILDINGS.forEach((b) => {
+    b.h = b.height ?? (b.floors ? b.floors * FLOOR_H : (b.model === false ? 0 : 12));
+    b.hSource = b.height != null ? "กำหนดเอง" : "ประมาณจากจำนวนชั้น";
+    b.nFloors = b.floors ?? Math.max(1, Math.round(b.h / FLOOR_H));
+
+    if (b.model !== false) b.parts.forEach((part, pi) => {
+      const ring = offsetPolygon(part.xy, WALL_PAD).map(toLL);
+      const ph = part.height ?? b.h;                       // ปีกย่อยกำหนดความสูงเองได้
+      const base = ground - 1.5, top = ground + ph;
+      const closed = ring.concat([ring[0]]);
+      const isHall = b.nFloors === 1 && ph > 5;
+      if (part.bleachers) {
+        const bl = bleacherParts(part), id = "wall-" + b.id + "-" + pi;
+        bl.steps.forEach((st, i) => modelEntities.push(viewer.entities.add({
+          id: id + "-s" + i,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(st.pts.map(toLL).flat()),
+            height: ground, extrudedHeight: ground + st.h,
+            material: Cesium.Color.fromCssColorString(i % 2 ? "#c3c7cc" : "#d3d6da")
+          }
+        })));
+        bl.dividers.forEach((d, i) => modelEntities.push(viewer.entities.add({
+          id: id + "-d" + i,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(d.a), ...toLL(d.c)]),
+            minimumHeights: [ground, ground], maximumHeights: [ground + d.h0, ground + d.h1],
+            material: Cesium.Color.fromCssColorString("#e6e8eb")
+          }
+        })));
+        modelEntities.push(viewer.entities.add({
+          id: id + "-h0",
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(bl.back.a), ...toLL(bl.back.c)]),
+            minimumHeights: [ground + bl.H, ground + bl.H], maximumHeights: [ground + bl.H + 1.1, ground + bl.H + 1.1],
+            material: new Cesium.ImageMaterialProperty({ image: balusters(), transparent: true,
+              repeat: new Cesium.Cartesian2(Math.max(1, Math.round(partAxis(part).L / 1.2)), 1) })
+          }
+        }));
+        return;
+      }
+      const per = perimeter(offsetPolygon(part.xy, WALL_PAD));
+
+      const tex = (len, floors) => new Cesium.ImageMaterialProperty({
+        image: facade(b.wall || "#ece6d6", part.facade || (isHall ? "hall" : "floor"), b.accent),
+        repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / (isHall ? 6 : 3.6))), isHall ? 1 : Math.max(1, floors))
+      });
+      const solid = (pts, z0, z1, color, id) => modelEntities.push(viewer.entities.add({
+        id,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(pts.map(toLL).flat()),
+          height: ground + z0, extrudedHeight: ground + z1,
+          material: Cesium.Color.fromCssColorString(color)
+        }
+      }));
+      if (part.walkway) {
+        // ทางเดินเชื่อม: ไม่มีผนัง มีเสา พื้นทางเดิน และราว
+        const w = walkwayParts(part, b.nFloors), id = "wall-" + b.id + "-" + pi;
+        w.cols.forEach((c, ci) => {
+          solid(c, 0, 1.4, b.accent || "#24409a", id + "-c" + ci);
+          solid(c, 1.4, ph, "#f4f5f7", id + "-k" + ci);
+        });
+        w.slabs.forEach((sl, si) => solid(sl.pts, sl.z - 0.35, sl.z, "#e6e8eb", id + "-s" + si));
+        const arches = part.walkway.arches;
+        w.rails.forEach((r, ri) => {
+          const len = Math.hypot(r.c[0] - r.a[0], r.c[1] - r.a[1]);
+          const zTop = ground + r.z + (arches ? FLOOR_H - 0.35 : 1.1);
+          modelEntities.push(viewer.entities.add({
+            id: id + "-h" + ri,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(r.a), ...toLL(r.c)]),
+              minimumHeights: [ground + r.z, ground + r.z],
+              maximumHeights: [zTop, zTop],
+              material: arches
+                ? new Cesium.ImageMaterialProperty({ image: archScreen(), transparent: true,
+                    repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / 3.6)), 1) })
+                : Cesium.Color.fromCssColorString("#f4f5f7")
+            }
+          }));
+        });
+      } else if (!part.voids) {
+        modelEntities.push(viewer.entities.add({
+          id: "wall-" + b.id + "-" + pi,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray(closed.flat()),
+            minimumHeights: closed.map(() => base),
+            maximumHeights: closed.map(() => top),
+            material: tex(per, b.nFloors)
+          }
+        }));
+      } else {
+        // ผนังแบ่งช่วง: ช่วงที่เปิดโล่งเริ่มผนังที่ชั้นบน
+        wallSegments(part, offsetPolygon(part.xy, WALL_PAD)).forEach((sg, si) => {
+          const len = Math.hypot(sg.c[0] - sg.a[0], sg.c[1] - sg.a[1]);
+          const z0 = sg.open ? ground + sg.open * FLOOR_H : base;
+          modelEntities.push(viewer.entities.add({
+            id: "wall-" + b.id + "-" + pi + "-" + si,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(sg.a), ...toLL(sg.c)]),
+              minimumHeights: [z0, z0],
+              maximumHeights: [top, top],
+              material: tex(len, b.nFloors - sg.open)
+            }
+          }));
+        });
+        voidParts(part).forEach((v, vi) => {
+          const poly = (pts, z0, z1, color, id) => modelEntities.push(viewer.entities.add({
+            id,
+            polygon: {
+              hierarchy: Cesium.Cartesian3.fromDegreesArray(pts.map(toLL).flat()),
+              height: ground + z0, extrudedHeight: ground + z1,
+              material: Cesium.Color.fromCssColorString(color)
+            }
+          }));
+          poly(v.slab, v.h - 0.35, v.h, "#d9dde2", "wall-" + b.id + "-" + pi + "-v" + vi);
+          v.walls.forEach(([a, c], wi) => modelEntities.push(viewer.entities.add({
+            id: "wall-" + b.id + "-" + pi + "-w" + vi + "-" + wi,
+            wall: {
+              positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
+              minimumHeights: [base, base],
+              maximumHeights: [ground + v.h, ground + v.h],
+              material: tex(Math.hypot(c[0] - a[0], c[1] - a[1]), v.h / FLOOR_H)
+            }
+          })));
+          v.cols.forEach((c, ci) => {
+            poly(c, 0, 1.4, b.accent || "#24409a", "wall-" + b.id + "-" + pi + "-c" + vi + "-" + ci);
+            poly(c, 1.4, v.h - 0.35, "#f4f5f7", "wall-" + b.id + "-" + pi + "-k" + vi + "-" + ci);
+          });
+        });
+      }
+      const faces = pitchedRoof(part, top);
+      if (faces) {
+        (faces.ridges || []).forEach((r, i) => modelEntities.push(viewer.entities.add({
+          id: "roof-" + b.id + "-" + pi + "-r" + i,
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArrayHeights(r.flatMap(([x, y, z]) => [...toLL([x, y]), z + 0.08])),
+            width: 3,
+            arcType: Cesium.ArcType.NONE,
+            material: Cesium.Color.fromCssColorString("#e9ecef")
+          }
+        })));
+        faces.forEach((f, i) => modelEntities.push(viewer.entities.add({
+          id: "roof-" + b.id + "-" + pi + "-" + i,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights(f.pts.flatMap(([x, y, z]) => [...toLL([x, y]), z])),
+            perPositionHeight: true,
+            material: Cesium.Color.fromCssColorString(f.color)
+          }
+        })));
+      } else {
+        modelEntities.push(viewer.entities.add({
+          id: "roof-" + b.id + "-" + pi,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(ring.flat()),
+            height: top,
+            extrudedHeight: top + 0.9,
+            material: Cesium.Color.fromCssColorString(b.roof || "#8a857c")
+          }
+        }));
+      }
+    });
+
+    // กันสาดยื่นรอบอาคารทุกชั้น (เว้นช่วงที่เป็นช่องโล่ง)
+    if (b.model !== false && b.sunshade) b.parts.forEach((part, pi) => {
+      if (part.walkway || part.bleachers) return;
+      const inner = offsetPolygon(part.xy, WALL_PAD), outer = offsetPolygon(part.xy, WALL_PAD + b.sunshade);
+      const openF = Math.max(0, ...(part.voids || []).map((v) => v.floors));
+      for (let f = Math.max(1, openF + 1); f < b.nFloors; f++) {
+        const z = ground + f * FLOOR_H;
+        modelEntities.push(viewer.entities.add({
+          id: "wall-" + b.id + "-" + pi + "-e" + f,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(
+              Cesium.Cartesian3.fromDegreesArray(outer.map(toLL).flat()),
+              [new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(inner.map(toLL).flat()))]),
+            height: z - 0.18, extrudedHeight: z,
+            material: Cesium.Color.fromCssColorString("#f3f4f6")
+          }
+        }));
+      }
+    });
+    if (b.model !== false && b.decor) decorParts(b.parts[0], b.decor).forEach((dp, di) => {
+      const d = dp.d, id = "wall-" + b.id + "-x" + di;
+      const flatWall = (k, z0, z1, material, suffix) => {
+        // เรียงจุดให้ภาพบนผนังอ่านได้ถูกด้านเมื่อมองจากด้านนอกอาคาร
+        const [p0, p1] = dp.line(k), [a, c] = d.side === "right" ? [p0, p1] : [p1, p0];
+        modelEntities.push(viewer.entities.add({
+          id: id + suffix,
+          wall: { positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
+            minimumHeights: [ground + z0, ground + z0], maximumHeights: [ground + z1, ground + z1], material }
+        }));
+      };
+      const solid = (pts, z0, z1, color, suffix) => modelEntities.push(viewer.entities.add({
+        id: id + suffix,
+        polygon: { hierarchy: Cesium.Cartesian3.fromDegreesArray(pts.map(toLL).flat()),
+          height: ground + z0, extrudedHeight: ground + z1, material: Cesium.Color.fromCssColorString(color) }
+      }));
+      if (d.type === "panel") {
+        const img = d.image === "emblem" ? emblemPanel() : screenPanel();
+        flatWall(d.offset ?? 0.4, d.z0, d.z1, new Cesium.ImageMaterialProperty({ image: img }), "-0");
+      }
+      if (d.type === "canopy") {
+        solid(dp.roof, d.z1 - 0.3, d.z1, "#5b2c22", "-r");
+        flatWall(d.depth + 0.02, d.z0, d.z1, new Cesium.ImageMaterialProperty({ image: signBoard(d.sign || "") }), "-s");
+        dp.cols.forEach((c, ci) => solid(c, 0, d.z0, "#1d2a6b", "-c" + ci));
+      }
+      if (d.type === "plinth") solid(dp.block, 0, d.h, d.color || "#8e4f42", "-p");
+    });
+
+    if (b.model !== false) (b.stairs || []).forEach((st, si) => {
+      const sp = stairParts(st), id = "wall-" + b.id + "-t" + si;
+      const LLH = (pts) => Cesium.Cartesian3.fromDegreesArrayHeights(pts.flatMap(([x, y, z]) => [...toLL([x, y]), ground + z]));
+      const face = (pts, color, k) => modelEntities.push(viewer.entities.add({
+        id: id + "-" + k, polygon: { hierarchy: LLH(pts), perPositionHeight: true, material: Cesium.Color.fromCssColorString(color) }
+      }));
+      face(sp.slope, "#a8553e", "p0");             // ขั้นบันไดสีอิฐ
+      face(sp.under, "#eceef1", "p1");             // ท้องบันได
+      sp.stringers.forEach((f, k) => face(f, "#f4f5f7", "g" + k));
+      sp.steps.forEach((ln, li) => modelEntities.push(viewer.entities.add({
+        id: id + "-l" + li,
+        polyline: { positions: LLH(ln), width: 1, arcType: Cesium.ArcType.NONE, material: Cesium.Color.fromCssColorString("#6e3526") }
+      })));
+      sp.sides.forEach(([a, c], k) => {
+        const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        modelEntities.push(viewer.entities.add({
+          id: id + "-b" + k,
+          wall: {
+            positions: Cesium.Cartesian3.fromDegreesArray([...toLL(a), ...toLL(c)]),
+            minimumHeights: [ground + sp.z0, ground + sp.z1], maximumHeights: [ground + sp.z0 + 1.0, ground + sp.z1 + 1.0],
+            material: new Cesium.ImageMaterialProperty({ image: balusters(), transparent: true, repeat: new Cesium.Cartesian2(Math.max(1, Math.round(len / 1.2)), 1) })
+          }
+        }));
+      });
+    });
+    // ชานพักบันได: b.platforms = [{ footprint, height }]
+    if (b.model !== false) (b.platforms || []).forEach((pf, pi2) => modelEntities.push(viewer.entities.add({
+      id: "wall-" + b.id + "-q" + pi2,
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(pf.footprint.flat()),
+        height: ground, extrudedHeight: ground + pf.height,
+        material: Cesium.Color.fromCssColorString("#d9c2b0")
+      }
+    })));
+
+    labelEntities.push(viewer.entities.add({
+      id: "label-" + b.id,
+      position: Cesium.Cartesian3.fromDegrees(...toLL(b.labelXY), ground + b.h + (b.model === false ? 2 : 4)),
+      label: {
+        text: b.name,
+        font: "600 15px 'Noto Sans Thai', sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.fromCssColorString("#0b2a4a"),
+        outlineWidth: 4,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -6),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new Cesium.NearFarScalar(150, 1.1, 1500, 0.6)
+      },
+      point: {
+        pixelSize: 7,
+        color: Cesium.Color.fromCssColorString("#5aa9ff"),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      }
+    }));
+  });
+
+  // ---------- การ์ดรายละเอียด ----------
+  function showInfo(b) {
+    $("infoKind").textContent = b.kind || "";
+    $("infoName").textContent = b.name;
+    const pending = !b.desc || b.desc.startsWith("รอข้อมูล");
+    $("infoDesc").textContent = b.desc || "รอข้อมูล";
+    $("infoDesc").classList.toggle("pending", pending);
+    const hasModel = b.model !== false;
+    $("infoStats").classList.toggle("hidden", !hasModel);
+    if (hasModel) {
+      $("infoHeight").textContent = "~" + Math.round(b.h) + " ม.";
+      $("infoFloors").textContent = (b.floors == null ? "~" : "") + b.nFloors;
+    }
+    $("infoSrc").textContent = "ที่มา: " + (b.source || "-") + (hasModel ? " · ความสูง: " + b.hSource : "");
+    $("info").classList.remove("hidden");
+  }
+  $("infoClose").onclick = () => $("info").classList.add("hidden");
+
+  const byId = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
+  viewer.screenSpaceEventHandler.setInputAction((e) => {
+    const picked = scene.pick(e.position);
+    const id = picked && picked.id && picked.id.id;
+    const b = id && byId[id.replace(/^(wall|roof|label)-/, "").replace(/(-[a-z]?\d*)+$/, "")];
+    if (b) showInfo(b);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  // ปุ่มอาคาร
+  const wrap = $("buildings");
+  BUILDINGS.forEach((b) => {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.textContent = b.name;
+    btn.onclick = () => { stopSpin(); if (walk.on) exitWalk(false); flyBuilding(b); showInfo(b); };
+    wrap.appendChild(btn);
+  });
+
+  $("home").onclick = () => { stopSpin(); if (walk.on) return exitWalk(); flyHome(); };
+  $("top").onclick = () => { stopSpin(); if (walk.on) exitWalk(false); flyTop(); };
+
+  const toggler = (id, get, set) => {
+    $(id).onclick = (e) => {
+      const on = !get();
+      set(on);
+      e.currentTarget.classList.toggle("on", on);
+    };
+  };
+  toggler("cement", () => cementPads.length > 0 && cementPads[0].show, (on) => cementPads.forEach((g) => g.show = on));
+  toggler("models", () => modelEntities.length > 0 && modelEntities[0].show, (on) => modelEntities.forEach((m) => m.show = on));
+  toggler("clip", () => clip.enabled, (on) => clip.enabled = on);
+  toggler("labels", () => labelEntities[0].show, (on) => labelEntities.forEach((l) => l.show = on));
+
+  // หมุนกล้องรอบจุดกลางโรงเรียน
+  let spinning = false;
+  const spinCenter = Cesium.Cartesian3.fromDegrees(CENTER.lon, CENTER.lat, ground + 10);
+  function spinTick() { viewer.camera.rotate(spinCenter, 0.0015); }
+  function stopSpin() {
+    if (!spinning) return;
+    spinning = false;
+    viewer.clock.onTick.removeEventListener(spinTick);
+    $("spin").classList.remove("on");
+  }
+  $("spin").onclick = () => {
+    if (spinning) return stopSpin();
+    spinning = true;
+    viewer.clock.shouldAnimate = true;
+    viewer.clock.onTick.addEventListener(spinTick);
+    $("spin").classList.add("on");
+  };
+  viewer.screenSpaceEventHandler.setInputAction(stopSpin, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+  // ---------- โหมดเดินในโรงเรียน (มุมมองบุคคลที่หนึ่ง) ----------
+  const EYE = 1.6, WALK_SPEED = 1.6, TURN_SPEED = Cesium.Math.toRadians(70);
+  const outlineXY = SCHOOL_OUTLINE.map(toXY);
+  const walk = { on: false, pos: [0, 0], heading: 0, pitch: 0, keys: new Set(), pad: new Set(), last: 0, dirty: false };
+
+  // จุดที่เดินผ่านไม่ได้: ในตัวอาคาร ยกเว้นทางเดินโล่งและช่องโล่งใต้อาคาร
+  function blocked(q) {
+    if (!inside(q, outlineXY)) return true;
+    for (const b of BUILDINGS) {
+      if (b.model === false) continue;
+      for (const part of b.parts) {
+        if (part.walkway) continue;
+        if (!inside(q, offsetPolygon(part.xy, WALL_PAD + 0.9))) continue;   // เว้นระยะจากผนังไม่ให้กล้องชิดเกินไป
+        if (part.voids) {
+          const t = partAxis(part).t(q);
+          if (part.voids.some((v) => t > v.from && t < v.to)) continue;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function placeWalkCamera() {
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(...toLL(walk.pos), ground + EYE),
+      orientation: { heading: walk.heading, pitch: walk.pitch, roll: 0 }
+    });
+  }
+
+  function walkTick() {
+    if (!walk.on) return;
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - walk.last) / 1000);
+    walk.last = now;
+    const k = walk.keys, p = walk.pad;
+    const fwd = (k.has("w") || k.has("arrowup") || p.has("fwd") ? 1 : 0) - (k.has("s") || k.has("arrowdown") || p.has("back") ? 1 : 0);
+    const turn = (k.has("d") || k.has("arrowright") || p.has("right") ? 1 : 0) - (k.has("a") || k.has("arrowleft") || p.has("left") ? 1 : 0);
+    if (turn) walk.heading = Cesium.Math.zeroToTwoPi(walk.heading + turn * TURN_SPEED * dt);
+    if (fwd) {
+      const step = fwd * WALK_SPEED * (k.has("shift") ? 2.5 : 1) * dt;
+      // heading วัดจากทิศเหนือตามเข็มนาฬิกา: x = ตะวันออก, y = เหนือ
+      const dx = Math.sin(walk.heading) * step, dy = Math.cos(walk.heading) * step;
+      const tryMove = (q) => { if (!blocked(q)) { walk.pos = q; return true; } return false; };
+      // ชนผนังแล้วไถลไปตามผนัง
+      tryMove([walk.pos[0] + dx, walk.pos[1] + dy]) || tryMove([walk.pos[0] + dx, walk.pos[1]]) || tryMove([walk.pos[0], walk.pos[1] + dy]);
+    }
+    if (fwd || turn || walk.dirty) { placeWalkCamera(); walk.dirty = false; }
+  }
+
+  function setControls(enabled) {
+    const c = scene.screenSpaceCameraController;
+    c.enableRotate = c.enableTranslate = c.enableZoom = c.enableTilt = c.enableLook = enabled;
+  }
+
+  function enterWalk() {
+    stopSpin();
+    $("info").classList.add("hidden");
+    // เริ่มเดินจากจุดกลางจอถ้าอยู่ในโรงเรียน ไม่เช่นนั้นเริ่มที่ลานหน้าอาคารเฉลิมพระเกียรติ
+    let start = toXY([100.61495, 13.76838]), heading = Cesium.Math.toRadians(75);
+    const ray = viewer.camera.getPickRay(new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2));
+    const hit = ray && scene.globe.pick(ray, scene);
+    if (hit) {
+      const c = Cesium.Cartographic.fromCartesian(hit);
+      const q = toXY([Cesium.Math.toDegrees(c.longitude), Cesium.Math.toDegrees(c.latitude)]);
+      if (!blocked(q)) { start = q; heading = viewer.camera.heading; }
+    }
+    Object.assign(walk, { on: true, pos: start, heading, pitch: Cesium.Math.toRadians(-2), last: performance.now(), dirty: true });
+    walk.keys.clear();
+    walk.pad.clear();
+    setControls(false);
+    viewer.camera.frustum.fov = Cesium.Math.toRadians(75);
+    $("walk").classList.add("on");
+    $("walkpad").classList.remove("hidden");
+    $("walkhint").classList.remove("hidden");
+    if (window.matchMedia("(max-width: 600px)").matches) $("panel").classList.add("collapsed");
+    placeWalkCamera();
+  }
+
+  function exitWalk(fly = true) {
+    if (!walk.on) return;
+    walk.on = false;
+    setControls(true);
+    viewer.camera.frustum.fov = Cesium.Math.toRadians(60);
+    $("walk").classList.remove("on");
+    $("walkpad").classList.add("hidden");
+    $("walkhint").classList.add("hidden");
+    if (fly) flyHome();
+  }
+
+  viewer.clock.shouldAnimate = true;
+  viewer.clock.onTick.addEventListener(walkTick);
+  $("walk").onclick = () => (walk.on ? exitWalk() : enterWalk());
+  $("walkExit").onclick = () => exitWalk();
+
+  // ปุ่มบนจอ: กดค้างเพื่อเดิน/เลี้ยว
+  document.querySelectorAll("#walkpad [data-move]").forEach((btn) => {
+    const m = btn.dataset.move;
+    const down = (e) => { e.preventDefault(); walk.pad.add(m); btn.classList.add("on"); btn.setPointerCapture?.(e.pointerId); };
+    const up = () => { walk.pad.delete(m); btn.classList.remove("on"); };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("lostpointercapture", up);
+  });
+
+  // คีย์บอร์ด
+  window.addEventListener("keydown", (e) => {
+    if (!walk.on || e.target.tagName === "INPUT") return;
+    const key = e.key.toLowerCase();
+    if (key === "escape") return exitWalk();
+    if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift"].includes(key)) {
+      walk.keys.add(key);
+      e.preventDefault();
+    }
+  });
+  window.addEventListener("keyup", (e) => walk.keys.delete(e.key.toLowerCase()));
+  window.addEventListener("blur", () => walk.keys.clear());
+
+  // ลากเมาส์/นิ้วบนฉากเพื่อหันมองรอบ
+  let drag = null;
+  scene.canvas.addEventListener("pointerdown", (e) => { if (walk.on) drag = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener("pointerup", () => { drag = null; });
+  window.addEventListener("pointermove", (e) => {
+    if (!walk.on || !drag) return;
+    walk.heading = Cesium.Math.zeroToTwoPi(walk.heading + (e.clientX - drag.x) * 0.004);
+    walk.pitch = Cesium.Math.clamp(walk.pitch - (e.clientY - drag.y) * 0.004, Cesium.Math.toRadians(-60), Cesium.Math.toRadians(60));
+    drag = { x: e.clientX, y: e.clientY };
+    walk.dirty = true;
+  });
+
+  // บันทึกภาพมุมกล้องปัจจุบันเป็น PNG (ความละเอียด 2 เท่า) พร้อมเครดิตแหล่งข้อมูล
+  $("snap").onclick = () => {
+    stopSpin();
+    const btn = $("snap");
+    btn.disabled = true;
+    const oldScale = viewer.resolutionScale;
+    viewer.resolutionScale = Math.min(2, 4096 / scene.canvas.clientWidth);
+    const capture = () => {
+      scene.postRender.removeEventListener(capture);
+      const src = scene.canvas;
+      const out = document.createElement("canvas");
+      out.width = src.width;
+      out.height = src.height;
+      const g = out.getContext("2d");
+      g.drawImage(src, 0, 0);
+      const fs = Math.round(out.height / 50);
+      const credit = `โรงเรียนบดินทรเดชา (สิงห์ สิงหเสนี) · ภาพพื้น © Esri, Maxar, Earthstar Geographics · อาคาร © OpenStreetMap contributors`;
+      g.font = `600 ${fs}px 'Noto Sans Thai', sans-serif`;
+      g.fillStyle = "rgba(0,0,0,0.55)";
+      g.fillRect(0, out.height - fs * 1.8, g.measureText(credit).width + fs * 1.4, fs * 1.8);
+      g.fillStyle = "#fff";
+      g.fillText(credit, fs * 0.7, out.height - fs * 0.55);
+      viewer.resolutionScale = oldScale;
+      btn.disabled = false;
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      out.toBlob((blob) => download(blob, `bodindecha-3d-${stamp}.png`), "image/png");
+    };
+    // รอ 2 เฟรมให้ภาพที่ความละเอียดใหม่วาดเสร็จก่อนจับภาพ
+    let frames = 0;
+    const wait = () => { if (++frames < 3) return; scene.postRender.removeEventListener(wait); scene.postRender.addEventListener(capture); };
+    scene.postRender.addEventListener(wait);
+  };
+
+  $("glb").onclick = () => {
+    const bytes = buildGlb();
+    download(new Blob([bytes], { type: "model/gltf-binary" }), "bodindecha-3d.glb");
+  };
+
+}
+
+$("toggle").onclick = () => {
+  const p = $("panel");
+  p.classList.toggle("collapsed");
+  $("toggle").textContent = p.classList.contains("collapsed") ? "▸" : "▾";
 };
-if (window.innerWidth <= 600) document.getElementById('toggle').click();
+
+// ลบ key และค่าที่เคยบันทึกจากเวอร์ชันก่อน (ไม่ใช้แล้ว)
+try { ["bodindecha3d.googleKey", "bodindecha3d.heights.v1"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+
+start();
 </script>
 </body>
 </html>
